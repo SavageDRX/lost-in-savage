@@ -2,12 +2,13 @@
 
 A location-guessing game for the maps of **Savage: The Battle for Newerth**. You're dropped somewhere on a real Savage map, rebuilt in your browser from the map's own files. Look around, work out which map you're on, then pin the spot where you're standing on its minimap.
 
-By **Necro**. Map list and play counts come from [savagedrx.com](https://savagedrx.com/maps).
+By **Necro**. Version 1.1. Map list and play counts come from [savagedrx.com](https://savagedrx.com/maps).
 
 ## Features
 
 - 458 maps, each rebuilt from its heightmap, its three terrain texture layers, its real props, NPCs and grass
-- **Easy**, **Medium**, **Hard** and **Every map** pools based on how often each map is played on the Savage DRX servers
+- **Very easy** (the original S2 Games maps plus the best-known maps), **Easy**, **Medium**, **Hard** and **Every map**, based on how often each map is played on the Savage DRX servers
+- Full marks for a pin within 3.2 tiles of the real spot, with points tapering off gently beyond that
 - 3, 5 or 10 rounds, with a game code you can share so friends get the same maps and spots
 - **Daily ranked**: 3 Easy + 2 Medium maps, the same for everyone, new each day at 04:00 GMT; progress survives a refresh
 - Eight app themes, an optional Savage cursor, and toggles for the compass and grass
