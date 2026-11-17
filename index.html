@@ -1,0 +1,344 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'"
+    />
+    <meta name="referrer" content="strict-origin-when-cross-origin" />
+    <meta
+      name="description"
+      content="Lost in Savage: a location-guessing game for Savage maps. Look around, name the map, then pin where you're standing."
+    />
+    <title>Lost in Savage</title>
+    <link rel="icon" type="image/png" href="assets/icon_64.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;800&family=Inter:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="css/style.css" />
+  </head>
+  <body>
+    <header>
+      <button class="logo" id="logoBtn" type="button" title="Main menu">
+        <img src="assets/icon_192.png" alt="Lost in Savage: back to the main menu" />
+      </button>
+      <div>
+        <h1>Lost in Savage</h1>
+        <p>Look around, name the Savage map, then pin the spot where you're standing.</p>
+      </div>
+      <div class="hright">
+        <button class="btn" id="menuBtn" type="button" hidden>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M3 10.5 12 3l9 7.5" />
+            <path d="M5 9v12h14V9" />
+            <path d="M10 21v-6h4v6" /></svg
+          >Main menu
+        </button>
+        <button class="btn" id="howBtn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10" />
+            <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
+            <path d="M12 17h.01" /></svg
+          >How to play
+        </button>
+        <a class="btn" href="https://linktr.ee/SavageDRX" target="_blank" rel="noopener"
+          ><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="18" cy="5" r="3" />
+            <circle cx="6" cy="12" r="3" />
+            <circle cx="18" cy="19" r="3" />
+            <path d="m8.6 13.5 6.8 4M15.4 6.5l-6.8 4" /></svg
+          >Socials</a
+        >
+        <button class="btn" id="projBtn" type="button" aria-haspopup="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="3" width="7" height="7" rx="1" />
+            <rect x="14" y="3" width="7" height="7" rx="1" />
+            <rect x="3" y="14" width="7" height="7" rx="1" />
+            <rect x="14" y="14" width="7" height="7" rx="1" /></svg
+          >Other projects<svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            style="width: 13px; height: 13px"
+          >
+            <path d="m6 9 6 6 6-6" />
+          </svg>
+        </button>
+        <div id="projPop">
+          <a href="https://savagedrx.github.io/savage-minimap-maker/" target="_blank" rel="noopener"
+            ><img
+              class="pico"
+              src="data:image/png;base64,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"
+              alt=""
+            /><span><b>Savage Minimap Maker</b><small>Make and edit minimaps for Savage maps</small></span></a
+          >
+          <div class="projItem">
+            <img
+              class="pico"
+              src="data:image/png;base64,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"
+              alt=""
+            /><span
+              ><b>Server Activity extension</b
+              ><small>See who's playing on the Savage DRX servers whilst browsing</small>
+              <span class="projBtns"
+                ><a
+                  class="btn"
+                  href="https://chromewebstore.google.com/detail/savage-drx-server-activit/egamiohhagnobbapfommmgkjofhbjmoj"
+                  target="_blank"
+                  rel="noopener"
+                  >Chrome</a
+                ><a
+                  class="btn"
+                  href="https://addons.mozilla.org/en-GB/firefox/addon/savage-drx-server-activity/"
+                  target="_blank"
+                  rel="noopener"
+                  >Firefox</a
+                ></span
+              ></span
+            >
+          </div>
+          <div class="verline" style="margin-top: 8px">Lost in Savage v1.0 · by Necro</div>
+        </div>
+        <button class="btn" id="setBtn" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="3" />
+            <path
+              d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"
+            /></svg
+          >Settings
+        </button>
+        <div id="setPop">
+          <h3>App theme</h3>
+          <div id="appThemes"></div>
+          <h3>Cursor</h3>
+          <label><input type="checkbox" id="savCurChk" /> Use the Savage cursor</label>
+          <div
+            id="curSzRow"
+            style="display: flex; gap: 8px; align-items: center; font-size: 13px; margin-top: 8px; color: var(--mute)"
+          >
+            Size <input type="range" id="curSz" min="14" max="40" step="1" style="flex: 1" /><span
+              id="curSzV"
+              style="min-width: 34px; text-align: right"
+              >22px</span
+            >
+          </div>
+          <h3>View</h3>
+          <label><input type="checkbox" id="compassChk" /> Show the compass</label>
+          <label style="margin-top: 6px"><input type="checkbox" id="grassChk" /> Show grass</label>
+          <h3>Your scores</h3>
+          <button class="btn" id="resetBest" type="button" style="width: 100%">Reset best scores</button>
+          <div class="verline">Lost in Savage v1.0 · by Necro</div>
+        </div>
+      </div>
+    </header>
+
+    <main class="wrap">
+      <section class="card stage">
+        <div class="canvasbox view" id="viewBox">
+          <canvas id="view"></canvas>
+          <div class="compass" id="compass"></div>
+          <div class="hud">
+            <span class="chip" id="chipRound">Round <b>–</b></span
+            ><span class="chip" id="chipScore">Score <b>0</b></span>
+          </div>
+          <div class="vbtns">
+            <button id="zIn" title="Zoom in">+</button>
+            <button id="zOut" title="Zoom out">−</button>
+            <button id="vReset" title="Back to the starting view">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+                <path d="M3 12a9 9 0 1 0 3-6.7L3 8" />
+                <path d="M3 3v5h5" />
+              </svg>
+            </button>
+          </div>
+          <span class="chip vhint" id="vhint">Drag to look around · scroll to zoom</span>
+          <div id="intro">
+            <img src="assets/icon_192.png" alt="" />
+            <h2>Lost in Savage</h2>
+            <p>Choose your maps and rounds, then press Play to begin.</p>
+            <button id="introPlay" type="button">Play</button>
+          </div>
+          <div class="loading" id="loading" hidden>
+            <div class="spin"></div>
+            <span id="loadTxt">Loading the world…</span>
+          </div>
+        </div>
+        <div class="status">
+          <span id="statusL">Every view is a real spot on a real Savage map, rebuilt from the map files.</span
+          ><span id="statusR"></span>
+        </div>
+      </section>
+
+      <div class="rightcol">
+        <!-- start -->
+        <section class="card" id="pStart">
+          <h2>New game</h2>
+          <p class="sub">
+            You'll be dropped somewhere on a map from the Savage DRX servers. Work out which map it is, then pin your
+            spot on its minimap.
+          </p>
+          <div class="row">
+            <label class="t">Maps</label>
+            <div class="seg" id="segPool">
+              <button data-v="e" data-tip="Easy">Easy<small id="cntE">200+ plays</small></button>
+              <button data-v="m" data-tip="Medium">Medium<small id="cntM">110–199</small></button>
+              <button data-v="h" data-tip="Hard">Hard<small id="cntH">25–109</small></button>
+              <button data-v="a" data-tip="Every map">Every map<small id="allCount">all</small></button>
+            </div>
+          </div>
+          <div class="row">
+            <label class="t">Rounds</label>
+            <div class="seg" id="segRounds">
+              <button data-v="3">3</button><button data-v="5">5</button><button data-v="10">10</button>
+            </div>
+          </div>
+          <button class="btn primary big" id="playBtn">Play</button>
+          <div class="best" id="bestTxt"></div>
+          <details>
+            <summary>Play a friend's game</summary>
+            <p class="sub" style="margin: 4px 0 10px">
+              Everyone who enters the same code gets the same maps and the same spots.
+            </p>
+            <div class="codebox">
+              <input type="text" id="codeIn" placeholder="e.g. P5-483920" maxlength="12" /><button
+                class="btn"
+                id="codeBtn"
+              >
+                Play code
+              </button>
+            </div>
+          </details>
+          <div class="ranked" id="rankedCard">
+            <h3>Daily ranked <span class="tag">Global</span></h3>
+            <p id="rankedInfo">Resets every day at 4:00 GMT.</p>
+            <div class="rrow">
+              <button class="btn primary" id="rankedBtn" type="button">Play today's ranked</button
+              ><button class="btn" id="boardBtn" type="button">Leaderboard</button>
+            </div>
+            <div class="board" id="startBoard" hidden></div>
+          </div>
+        </section>
+
+        <!-- step 1: pick map -->
+        <section class="card" id="pPick" hidden>
+          <h2><span class="step">1</span>Which map is this?</h2>
+          <p class="sub">Maps are listed by how often they've been played.</p>
+          <div class="listhead">
+            <input type="text" id="search" placeholder="Search maps or authors…" /><span
+              class="count"
+              id="listCount"
+            ></span>
+          </div>
+          <div class="grid" id="grid"></div>
+        </section>
+
+        <!-- step 2: pin -->
+        <section class="card" id="pPin" hidden>
+          <h2><span class="step">2</span>Where are you standing?</h2>
+          <div class="picked">
+            <div>
+              <div class="nm" id="pinName"></div>
+              <div class="au" id="pinAuthor"></div>
+            </div>
+            <button class="link" id="changeMap">Change map</button>
+          </div>
+          <div class="canvasbox ovbox" id="pinBox">
+            <img id="pinImg" alt="Minimap" /><svg id="pinSvg" viewBox="0 0 1000 1000"></svg>
+          </div>
+          <div class="actions">
+            <button class="btn primary big" id="guessBtn" disabled>Click the minimap to place your pin</button>
+          </div>
+        </section>
+
+        <!-- result -->
+        <section class="card" id="pResult" hidden>
+          <div class="verdict" id="verdict"></div>
+          <div class="pts"><b id="ptsNum">0</b><span>/ 5,000 points</span></div>
+          <div class="bar"><i id="ptsBar"></i></div>
+          <p class="detail" id="resDetail"></p>
+          <div class="canvasbox ovbox" style="cursor: default">
+            <img id="resImg" alt="Minimap" /><svg id="resSvg" viewBox="0 0 1000 1000"></svg>
+          </div>
+          <div class="actions"><button class="btn primary big" id="nextBtn">Next round</button></div>
+        </section>
+
+        <!-- end -->
+        <section class="card" id="pEnd" hidden>
+          <div class="final">
+            <div class="rank" id="rank"></div>
+            <div class="tot" id="total"></div>
+            <div class="sub" id="endSub" style="margin-top: 4px"></div>
+          </div>
+          <table id="sumTable"></table>
+          <div id="rankedEnd" hidden>
+            <div id="nameBox">
+              <div class="nameRow">
+                <input
+                  id="nameIn"
+                  maxlength="16"
+                  placeholder="Your name for the leaderboard"
+                  autocomplete="nickname"
+                  spellcheck="false"
+                /><button class="btn primary" id="nameBtn" type="button">Submit</button>
+              </div>
+              <div class="nameMsg" id="nameMsg">2–16 letters, numbers, spaces, _ - or .</div>
+            </div>
+            <div class="board" id="endBoard"></div>
+          </div>
+          <div class="actions">
+            <button class="btn" id="shareBtn">Copy result &amp; code</button
+            ><button class="btn primary" id="againBtn">Play again</button>
+          </div>
+        </section>
+      </div>
+    </main>
+    <div class="foot">
+      <span
+        >Maps and minimaps from the Savage community · map list and play counts from
+        <a href="https://savagedrx.com/maps" target="_blank" rel="noopener">savagedrx.com</a></span
+      >
+    </div>
+
+    <div class="modal" id="resetModal" hidden>
+      <div class="card" style="max-width: 380px">
+        <h2>Reset best scores?</h2>
+        <p class="sub" style="margin: 6px 0 16px">
+          This clears your saved best score for every map pool and round count on this device. It can't be undone.
+        </p>
+        <div class="actions">
+          <button class="btn" id="resetNo" type="button">Cancel</button
+          ><button class="btn primary" id="resetYes" type="button">Reset scores</button>
+        </div>
+      </div>
+    </div>
+    <div class="modal" id="howModal" hidden>
+      <div class="card">
+        <h2>How to play</h2>
+        <ol>
+          <li>
+            You're standing somewhere on a Savage map. <b>Drag</b> the view to look all the way around, and scroll or
+            use <b>+ / −</b> to zoom.
+          </li>
+          <li>The compass at the top shows which way you're facing. North is the top of every minimap.</li>
+          <li>Pick the map you think it is, then click its minimap where you think you're standing.</li>
+          <li>
+            The right map scores up to <b>5,000</b> points; the closer your pin, the more you get. The wrong map scores
+            nothing.
+          </li>
+        </ol>
+        <p>Look for mines, the command centres, bridges, cliffs, snow and tree types. They all match the real map.</p>
+        <div class="actions"><button class="btn primary" id="howClose">Got it</button></div>
+      </div>
+    </div>
+    <div class="toast" id="toast"></div>
+
+    <script src="js/renderer.js"></script>
+    <script src="js/app.js"></script>
+  </body>
+</html>

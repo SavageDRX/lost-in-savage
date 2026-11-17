@@ -1,0 +1,11 @@
+# intermediate files from the build tools
+build/
+extract/
+maps/
+__pycache__/
+*.pyc
+# editors / OS
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
