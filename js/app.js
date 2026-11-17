@@ -5,7 +5,10 @@
   // escape text before it goes into innerHTML
   const esc = t =>
     String(t).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+  // maps left out of Very easy (they stay in the other pools)
+  const VE_SKIP = new Set(['eden', 'gaome', 'xr_snap', 'eden_winter', 'tuskanflats', 'glacierpoint', 'glacierpeak', 'borderwar', 'ehe_fixed', 'xr_pvp', 'xr_darkwater']);
   const POOLS = {
+    v: { label: 'Very easy', f: m => !VE_SKIP.has(m.id) && (/s2games/i.test(m.author) || m.plays > 500) },
     e: { label: 'Easy', f: m => m.plays > 200 },
     m: { label: 'Medium', f: m => m.plays >= 110 && m.plays <= 200 },
     h: { label: 'Hard', f: m => m.plays >= 50 && m.plays < 110 },
@@ -39,7 +42,7 @@
     R = null,
     game = null,
     opts = {
-      pool: { e: 1, m: 1, h: 1, a: 1 }[store.get('lis_pool')] ? store.get('lis_pool') : 'e',
+      pool: 'e', // every visit starts on Easy
       rounds: +(store.get('lis_rounds') || 5),
     };
   const cache = {};
@@ -248,7 +251,7 @@
     return `${pool.toUpperCase()}${rounds}-${seed}`;
   }
   function parseCode(c) {
-    const m = /^([EMHA])(3|5|10)-(\d{1,9})$/.exec(c.trim().toUpperCase());
+    const m = /^([VEMHA])(3|5|10)-(\d{1,9})$/.exec(c.trim().toUpperCase());
     return m ? { pool: m[1].toLowerCase(), rounds: +m[2], seed: +m[3] } : null;
   }
   function start(pool, rounds, seed) {
@@ -369,7 +372,7 @@
       dist = null;
     if (ok) {
       dist = Math.hypot((c.pin.u - tu) * m.W, (c.pin.v - tv) * m.H);
-      pts = dist < 2 ? 5000 : Math.round(5000 * Math.exp(-(dist - 2) / (m.W * 0.25)));
+      pts = dist < 3.2 ? 5000 : Math.round(5000 * Math.exp(-(dist - 3.2) / (m.W * 0.4)));
     }
     game.score += pts;
     game.res.push({ m, pick: c.pick, pts, dist, ok });
@@ -1302,6 +1305,7 @@
     $('cntM').textContent = `${INDEX.filter(POOLS.m.f).length} maps`;
     $('cntH').textContent = `${INDEX.filter(POOLS.h.f).length} maps`;
     const TIPS = {
+      v: 'Savage\'s original S2 Games maps, plus every map played more than 500 times.',
       e: 'The most played maps on the Savage DRX servers, played more than 200 times. The ones most players will know.',
       m: 'Well known maps, played 110 to 199 times.',
       h: 'Rarer maps, played 50 to 109 times.',

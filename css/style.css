@@ -363,7 +363,7 @@ h2 {
 }
 .row label.t {
   font-weight: 600;
-  min-width: 86px;
+  min-width: 56px;
 }
 .seg {
   display: flex;
@@ -1170,4 +1170,22 @@ header .logo:focus-visible {
 }
 [hidden] {
   display: none !important;
+}
+
+.seg#segPool {
+  flex-wrap: nowrap;
+  gap: 4px;
+}
+.seg#segPool button {
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 7px 2px;
+  font-size: 12px;
+  line-height: 1.2;
+}
+@media (max-width: 480px) {
+  .seg#segPool button {
+    font-size: 11px;
+    padding: 7px 1px;
+  }
 }
