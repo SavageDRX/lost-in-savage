@@ -2,7 +2,7 @@
 
 A location-guessing game for the maps of **Savage: The Battle for Newerth**. You're dropped somewhere on a real Savage map, rebuilt in your browser from the map's own files. Look around, work out which map you're on, then pin the spot where you're standing on its minimap.
 
-By **Necro**. Version 1.1. Map list and play counts come from [savagedrx.com](https://savagedrx.com/maps).
+By **Necro**. Version 1.2. Map list and play counts come from [savagedrx.com](https://savagedrx.com/maps).
 
 ## Features
 
@@ -29,16 +29,26 @@ You need a browser with WebGL 2 (any current Chrome, Edge, Firefox or Safari).
 
 ## Daily ranked and the leaderboard
 
-Ranked works anywhere. The **global leaderboard** uses a shared database that only exists when the game is hosted as a Claude artifact. On a plain static host such as GitHub Pages, the leaderboard button and name entry hide themselves and ranked is played without it. To run a public leaderboard you'd connect `fetchBoard` and the submit handler in `js/app.js` to a backend of your own (Firebase or Supabase, for example).
+Ranked works anywhere. The **global leaderboard** needs somewhere to store scores. It's built to use a free [Supabase](https://supabase.com) project:
 
-Scores are worked out in the player's browser, so treat any leaderboard as friendly rather than cheat-proof. Names are filtered for slurs and abuse before they're posted and again before they're shown.
+1. Create a Supabase account and a new project (the free plan is plenty).
+2. In the project, open **SQL Editor**, paste in the contents of `tools/leaderboard.sql` and click **Run**.
+3. Open **Project Settings → API** and copy the **Project URL** and the **publishable** key (an older **anon public** key also works).
+4. Paste them into `js/config.js`, then commit and push.
+
+The anon key is designed to be public. The rules in `leaderboard.sql` only let visitors read scores and add one score per player for the current day. Nobody can edit or delete scores through the site, but you can remove bad entries yourself in Supabase's table editor.
+
+Without a config the leaderboard button and name entry hide themselves and ranked is played without it. (When the game runs as a Claude artifact it uses the artifact's own shared database instead.)
+
+Scores are worked out in the player's browser, so treat the leaderboard as friendly rather than cheat-proof. Names are filtered for slurs and abuse before they're posted and again before they're shown, and the database only accepts 2–16 letters, numbers, spaces, `_`, `-` and `.`.
 
 ## Project layout
 
 ```
 index.html        page markup
 css/style.css     styles and themes
-js/app.js         game logic, menus, settings, ranked mode
+js/config.js      settings for a public copy (leaderboard keys)
+js/app.js         game logic, menus, settings, ranked mode, leaderboard
 js/renderer.js    WebGL renderer: terrain, props, grass, sky, spawn-point picking
 assets/           icons, start-screen image, minimap thumbnail sheet
 data/             one JSON file per map (Hard maps are bundled ten to a file in data/h/), plus index.json
@@ -68,7 +78,7 @@ python3 tools/mkpack.py         # pack models and textures into mpack/
 ## Security notes
 
 - No server code, no cookies, no tracking. Settings, best scores and ranked progress live in the browser's `localStorage`.
-- A Content Security Policy in `index.html` only allows the site's own scripts and data, plus Google Fonts.
+- A Content Security Policy in `index.html` only allows the site's own scripts and data, Google Fonts, and Supabase for the leaderboard.
 - Anything taken from data or player input is escaped before it reaches the page.
 - Test hooks (`?debug`) only switch on when the site is served from `localhost`.
 

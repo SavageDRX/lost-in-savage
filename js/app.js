@@ -6,7 +6,23 @@
   const esc = t =>
     String(t).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
   // maps left out of Very easy (they stay in the other pools)
-  const VE_SKIP = new Set(['eden', 'gaome', 'xr_snap', 'eden_winter', 'tuskanflats', 'glacierpoint', 'glacierpeak', 'borderwar', 'ehe_fixed', 'xr_pvp', 'xr_darkwater']);
+  const VE_SKIP = new Set([
+    'alpinevalley',
+    'tropical',
+    'sacrificeledge',
+    'moss',
+    'eden',
+    'gaome',
+    'xr_snap',
+    'eden_winter',
+    'tuskanflats',
+    'glacierpoint',
+    'glacierpeak',
+    'borderwar',
+    'ehe_fixed',
+    'xr_pvp',
+    'xr_darkwater',
+  ]);
   const POOLS = {
     v: { label: 'Very easy', f: m => !VE_SKIP.has(m.id) && (/s2games/i.test(m.author) || m.plays > 500) },
     e: { label: 'Easy', f: m => m.plays > 200 },
@@ -807,48 +823,124 @@
     if (e.key === 'Enter') $('nameBtn').click();
   });
 
-  /* Leaderboard: one document per player (ranked/<their id>), holding their latest day's score */
-  let DB = null,
-    UID = null;
-  const dbReady = (async () => {
+  /* ---------- Global leaderboard ----------
+     Two possible backends:
+     1. Supabase (for a public copy such as GitHub Pages): fill in js/config.js. See README.
+     2. The shared database of a Claude-hosted artifact, when the page runs there.
+     With neither, ranked still works and the leaderboard UI hides itself. */
+  const CFG = window.LIS_CONFIG || {};
+  const SB =
+    CFG.supabaseUrl && CFG.supabaseAnonKey
+      ? { url: CFG.supabaseUrl.replace(/\/+$/, ''), key: CFG.supabaseAnonKey }
+      : null;
+  // an anonymous, random id per browser so each player has one entry per day
+  function playerId() {
+    let id = store.get('lis_player');
+    if (!/^[0-9a-f-]{36}$/.test(id || '')) {
+      id = crypto.randomUUID
+        ? crypto.randomUUID()
+        : '10000000-1000-4000-8000-100000000000'.replace(/[018]/g, c =>
+            (c ^ (crypto.getRandomValues(new Uint8Array(1))[0] & (15 >> (c / 4)))).toString(16)
+          );
+      store.set('lis_player', id);
+    }
+    return id;
+  }
+  const withTimeout = p =>
+    Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 10000))]);
+  // new-style keys (sb_publishable_...) go in the apikey header only; legacy anon keys (eyJ...) are JWTs and also go in Authorization
+  const sbHeaders = extra =>
+    SB.key.startsWith('eyJ')
+      ? { apikey: SB.key, Authorization: `Bearer ${SB.key}`, ...extra }
+      : { apikey: SB.key, ...extra };
+  const backends = {
+    supabase: {
+      me: () => playerId(),
+      async list(day) {
+        const r = await withTimeout(
+          fetch(
+            `${SB.url}/rest/v1/ranked_scores?select=player,name,score&day=eq.${day}&order=score.desc,created_at.asc&limit=100`,
+            { headers: sbHeaders() }
+          )
+        );
+        if (!r.ok) throw new Error('http ' + r.status);
+        return (await r.json()).map(x => ({ id: x.player, name: x.name, score: x.score }));
+      },
+      async submit(e) {
+        const r = await withTimeout(
+          fetch(`${SB.url}/rest/v1/ranked_scores`, {
+            method: 'POST',
+            headers: sbHeaders({ 'Content-Type': 'application/json', Prefer: 'return=minimal' }),
+            body: JSON.stringify({ day: e.day, player: playerId(), name: e.name, score: e.score }),
+          })
+        );
+        // 409 = this browser already has a score today (the first score counts)
+        if (r.status === 409) throw Object.assign(new Error('dup'), { code: 'duplicate' });
+        if (!r.ok) throw new Error('http ' + r.status);
+      },
+    },
+    claude: {
+      db: null,
+      uid: null,
+      me() {
+        return this.uid;
+      },
+      async list(day) {
+        const snap = await withTimeout(
+          this.db.collection('ranked').where('day', '==', day).orderBy('score', 'desc').limit(100).get()
+        );
+        return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      },
+      async submit(e) {
+        if (!this.uid) throw Object.assign(new Error('no user'), { code: 'invalid_argument' });
+        // only the first score of the day counts: never overwrite one that's already there
+        const prev = await this.db.collection('ranked').doc(this.uid).get();
+        if (prev.exists && prev.data().day === e.day) throw Object.assign(new Error('dup'), { code: 'duplicate' });
+        await this.db
+          .collection('ranked')
+          .doc(this.uid)
+          .set({ name: e.name, score: e.score, day: e.day, at: Date.now(), rounds: e.rounds });
+      },
+    },
+  };
+  let BOARD = null;
+  const boardReady = (async () => {
+    if (SB) return (BOARD = backends.supabase);
     try {
       if (!window.claude || !window.claude.use) return;
-      DB = await window.claude.use('db');
+      const db = await window.claude.use('db');
+      if (!db) return;
       const u = await window.claude.use('user');
-      UID = u ? await u.id() : null;
+      backends.claude.db = db;
+      backends.claude.uid = u ? await u.id() : null;
+      BOARD = backends.claude;
     } catch (e) {
-      DB = null;
+      BOARD = null;
     }
   })();
   async function fetchBoard(day) {
-    await dbReady;
-    if (!DB) return null;
-    const q = DB.collection('ranked').where('day', '==', day).orderBy('score', 'desc').limit(100);
-    const snap = await Promise.race([
-      q.get(),
-      new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 10000)),
-    ]);
-    return snap.docs
-      .map(d => ({ id: d.id, ...d.data() }))
-      .filter(
-        r =>
-          typeof r.score === 'number' &&
-          r.score >= 0 &&
-          r.score <= 25000 &&
-          typeof r.name === 'string' &&
-          !nameProblem(r.name)
-      );
+    await boardReady;
+    if (!BOARD) return null;
+    // shared data is untrusted: keep only well-formed rows with acceptable names
+    return (await BOARD.list(day)).filter(
+      r =>
+        typeof r.score === 'number' &&
+        r.score >= 0 &&
+        r.score <= 25000 &&
+        typeof r.name === 'string' &&
+        !nameProblem(r.name)
+    );
   }
   async function renderBoard(el, day) {
     el.hidden = false;
-    el.innerHTML = `<h4>Today's leaderboard · ${dayLabel(day)}</h4><div class="empty">Loading…</div>`;
+    const head = `<h4>Today's leaderboard · ${dayLabel(day)}</h4>`;
+    el.innerHTML = head + '<div class="empty">Loading…</div>';
     let rows;
     try {
       rows = await fetchBoard(day);
     } catch (e) {
       rows = undefined;
     }
-    const head = `<h4>Today's leaderboard · ${dayLabel(day)}</h4>`;
     if (rows === null) {
       el.innerHTML =
         head + '<div class="empty">The global leaderboard isn\'t available on this copy of the game.</div>';
@@ -863,13 +955,14 @@
       el.innerHTML = head + '<div class="empty">No scores yet today. Be the first!</div>';
       return;
     }
+    const me = BOARD.me();
     el.innerHTML =
       head +
       '<ol>' +
       rows
         .map(
           (r, i) =>
-            `<li class="${r.id === UID ? 'me' : ''}"><span class="pos">${i + 1}</span><span class="nm">${esc(r.name)}</span><span class="sc">${fmt(r.score)}</span></li>`
+            `<li class="${r.id === me ? 'me' : ''}"><span class="pos">${i + 1}</span><span class="nm">${esc(r.name)}</span><span class="sc">${fmt(r.score)}</span></li>`
         )
         .join('') +
       '</ol>';
@@ -890,8 +983,8 @@
     $('nameBox').hidden = !!saved.sent;
     $('nameMsg').classList.remove('bad');
     $('nameMsg').textContent = '2–16 letters, numbers, spaces, _ - or .';
-    dbReady.then(() => {
-      if (!DB) {
+    boardReady.then(() => {
+      if (!BOARD) {
         $('nameBox').hidden = true;
         $('endBoard').hidden = true;
       } else renderBoard($('endBoard'), game.day);
@@ -905,29 +998,19 @@
       $('nameMsg').classList.add('bad');
       return;
     }
-    await dbReady;
-    if (!DB || !UID) {
-      $('nameMsg').textContent = "The global leaderboard isn't available on this copy of the game.";
-      $('nameMsg').classList.add('bad');
-      return;
-    }
+    await boardReady;
     const saved = loadRanked();
-    if (!saved || !saved.done) {
-      return;
-    }
+    if (!BOARD || !saved || !saved.done) return;
     $('nameBtn').disabled = true;
     $('nameMsg').classList.remove('bad');
     $('nameMsg').textContent = 'Posting…';
     try {
-      await DB.collection('ranked')
-        .doc(UID)
-        .set({
-          name: n,
-          score: saved.score,
-          day: saved.day,
-          at: Date.now(),
-          rounds: (saved.res || []).map(r => ({ id: r.id, pts: r.pts })),
-        });
+      await BOARD.submit({
+        name: n,
+        score: saved.score,
+        day: saved.day,
+        rounds: (saved.res || []).map(r => ({ id: r.id, pts: r.pts })),
+      });
       store.set('lis_name', n);
       store.set('lis_ranked3', JSON.stringify({ ...saved, sent: true }));
       $('nameBox').hidden = true;
@@ -936,17 +1019,19 @@
     } catch (e) {
       $('nameMsg').classList.add('bad');
       $('nameMsg').textContent =
-        e && e.code === 'invalid_argument'
-          ? "You don't have permission to post scores on this copy of the game."
-          : "Couldn't post your score. Please try again.";
+        e && e.code === 'duplicate'
+          ? "You've already posted a score today. Only the first one counts."
+          : e && e.code === 'invalid_argument'
+            ? "You don't have permission to post scores on this copy of the game."
+            : "Couldn't post your score. Please try again.";
     } finally {
       $('nameBtn').disabled = false;
     }
   };
   $('rankedBtn').onclick = startRanked;
   // without a leaderboard backend (e.g. a static GitHub Pages copy) ranked still works, just without the global board
-  dbReady.then(() => {
-    if (!DB) {
+  boardReady.then(() => {
+    if (!BOARD) {
       $('boardBtn').hidden = true;
       document.querySelector('#rankedCard .tag').hidden = true;
     }
@@ -1305,7 +1390,7 @@
     $('cntM').textContent = `${INDEX.filter(POOLS.m.f).length} maps`;
     $('cntH').textContent = `${INDEX.filter(POOLS.h.f).length} maps`;
     const TIPS = {
-      v: 'Savage\'s original S2 Games maps, plus every map played more than 500 times.',
+      v: "Savage's original S2 Games maps, plus every map played more than 500 times.",
       e: 'The most played maps on the Savage DRX servers, played more than 200 times. The ones most players will know.',
       m: 'Well known maps, played 110 to 199 times.',
       h: 'Rarer maps, played 50 to 109 times.',

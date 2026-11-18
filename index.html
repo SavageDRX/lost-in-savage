@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://*.supabase.co; object-src 'none'; base-uri 'self'; form-action 'none'"
     />
     <meta name="referrer" content="strict-origin-when-cross-origin" />
     <meta
@@ -20,7 +20,7 @@
       href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;800&family=Inter:wght@400;500;600&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="css/style.css?v=1.1" />
+    <link rel="stylesheet" href="css/style.css?v=1.2" />
   </head>
   <body>
     <header>
@@ -103,7 +103,7 @@
               ></span
             >
           </div>
-          <div class="verline" style="margin-top: 8px">Lost in Savage v1.1 · by Necro</div>
+          <div class="verline" style="margin-top: 8px">Lost in Savage v1.2 · by Necro</div>
         </div>
         <button class="btn" id="setBtn" type="button">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -133,7 +133,7 @@
           <label style="margin-top: 6px"><input type="checkbox" id="grassChk" /> Show grass</label>
           <h3>Your scores</h3>
           <button class="btn" id="resetBest" type="button" style="width: 100%">Reset best scores</button>
-          <div class="verline">Lost in Savage v1.1 · by Necro</div>
+          <div class="verline">Lost in Savage v1.2 · by Necro</div>
         </div>
       </div>
     </header>
@@ -339,7 +339,8 @@
     </div>
     <div class="toast" id="toast"></div>
 
-    <script src="js/renderer.js?v=1.1"></script>
-    <script src="js/app.js?v=1.1"></script>
+    <script src="js/config.js?v=1.2.3"></script>
+    <script src="js/renderer.js?v=1.2"></script>
+    <script src="js/app.js?v=1.2.3"></script>
   </body>
 </html>
