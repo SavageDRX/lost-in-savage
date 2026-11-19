@@ -20,7 +20,7 @@
       href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;800&family=Inter:wght@400;500;600&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="css/style.css?v=1.2" />
+    <link rel="stylesheet" href="css/style.css?v=1.3.1" />
   </head>
   <body>
     <header>
@@ -103,7 +103,7 @@
               ></span
             >
           </div>
-          <div class="verline" style="margin-top: 8px">Lost in Savage v1.2 · by Necro</div>
+          <div class="verline" style="margin-top: 8px">Lost in Savage v1.3 · by Necro</div>
         </div>
         <button class="btn" id="setBtn" type="button">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -133,7 +133,7 @@
           <label style="margin-top: 6px"><input type="checkbox" id="grassChk" /> Show grass</label>
           <h3>Your scores</h3>
           <button class="btn" id="resetBest" type="button" style="width: 100%">Reset best scores</button>
-          <div class="verline">Lost in Savage v1.2 · by Necro</div>
+          <div class="verline">Lost in Savage v1.3 · by Necro</div>
         </div>
       </div>
     </header>
@@ -147,6 +147,7 @@
             <span class="chip" id="chipRound">Round <b>–</b></span
             ><span class="chip" id="chipScore">Score <b>0</b></span>
           </div>
+          <span class="chip" id="chipDiff" hidden></span>
           <div class="vbtns">
             <button id="zIn" title="Zoom in">+</button>
             <button id="zOut" title="Zoom out">−</button>
@@ -275,6 +276,7 @@
             <div class="rank" id="rank"></div>
             <div class="tot" id="total"></div>
             <div class="sub" id="endSub" style="margin-top: 4px"></div>
+            <div id="emojiRow" title="One square per round: green 4,500+, yellow 2,500+, orange under 2,500, red wrong map"></div>
           </div>
           <table id="sumTable"></table>
           <div id="rankedEnd" hidden>
@@ -341,6 +343,6 @@
 
     <script src="js/config.js?v=1.2.4"></script>
     <script src="js/renderer.js?v=1.2"></script>
-    <script src="js/app.js?v=1.2.4"></script>
+    <script src="js/app.js?v=1.3.1"></script>
   </body>
 </html>

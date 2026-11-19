@@ -74,13 +74,13 @@
     (cache[id] = (() => {
       const e = INDEX.find(m => m.id === id);
       if (e && e.b) {
-        const b = bcache[e.b] || (bcache[e.b] = getJSON('data/' + e.b + '.json'));
+        const b = bcache[e.b] || (bcache[e.b] = getJSON('data/' + e.b + '.json?v=' + DATA_V));
         return b.then(x => {
           if (!x[id]) throw new Error('Could not load ' + id);
           return x[id];
         });
       }
-      return getJSON('data/' + id + '.json');
+      return getJSON('data/' + id + '.json?v=' + DATA_V);
     })());
 
   /* ---------- 3D view ---------- */
@@ -255,11 +255,15 @@
       s = size / 96;
     return `background-size:${1440 * s}px auto;background-position:-${(m.t % c) * 96 * s}px -${Math.floor(m.t / c) * 96 * s}px`;
   }
+  // bump when map data changes so browsers don't keep an old copy of the map list
+  const DATA_V = '1.3';
   function chips() {
     $('chipRound').innerHTML = game
       ? `Round <b>${Math.min(game.i + 1, game.maps.length)}</b> / ${game.maps.length}`
       : 'Round <b>–</b>';
     $('chipScore').innerHTML = `Score <b>${fmt(game ? game.score : 0)}</b>`;
+    $('chipDiff').hidden = !game;
+    if (game) $('chipDiff').innerHTML = `<b>${game.ranked ? 'Daily ranked' : POOLS[game.pool].label}</b>`;
   }
 
   /* ---------- game ---------- */
@@ -310,7 +314,7 @@
       return;
     }
     $('statusL').innerHTML =
-      `Round <b>${game.i + 1}</b> of ${game.maps.length} · ${game.ranked ? `Daily ranked · ${dayLabel(game.day)}` : POOLS[game.pool].label + ' maps'}`;
+      `Round <b>${game.i + 1}</b> of ${game.maps.length} · ${game.ranked ? `Daily ranked · ${dayLabel(game.day)}` : POOLS[game.pool].label}`;
     $('statusR').innerHTML = game.ranked
       ? `Resets in <b>${untilReset()}</b>`
       : `Game code <b>${codeFor(game.pool, game.rounds, game.seed)}</b>`;
@@ -452,6 +456,7 @@
     const rank = RANKS.filter(r => f >= r[0]).pop()[1];
     $('rank').textContent = rank;
     $('total').innerHTML = `${fmt(game.score)} <small>/ ${fmt(max)}</small>`;
+    $('emojiRow').textContent = emojiRow();
     $('rankedEnd').hidden = !game.ranked;
     $('shareBtn').textContent = game.ranked ? 'Copy result' : 'Copy result & code';
     $('againBtn').textContent = game.ranked ? 'Main menu' : 'Play again';
@@ -462,7 +467,7 @@
         prev = +(store.get(key) || 0);
       if (game.score > prev) store.set(key, game.score);
       $('endSub').innerHTML =
-        `${POOLS[game.pool].label} maps · code <b style="color:var(--accent2)">${codeFor(game.pool, game.rounds, game.seed)}</b>${game.score > prev && prev ? ' · new best!' : ''}`;
+        `${POOLS[game.pool].label} · code <b style="color:var(--accent2)">${codeFor(game.pool, game.rounds, game.seed)}</b>${game.score > prev && prev ? ' · new best!' : ''}`;
     }
     $('sumTable').innerHTML = game.res
       .map(
@@ -493,15 +498,26 @@
   $('menuBtn').onclick = mainMenu;
   $('logoBtn').onclick = mainMenu;
   $('introPlay').onclick = () => $('playBtn').click();
+  // Wordle-style result: one square per round
+  const SHARE_URL = 'https://savagedrx.github.io/lost-in-savage/';
+  const emojiRow = () =>
+    game.res.map(r => (!r.ok ? '🟥' : r.pts >= 4500 ? '🟩' : r.pts >= 2500 ? '🟨' : '🟧')).join('');
+  function shareText() {
+    const head = game.ranked
+      ? `Lost in Savage – Daily ranked, ${dayLabel(game.day)}`
+      : `Lost in Savage – ${POOLS[game.pool].label}, ${game.maps.length} rounds`;
+    return (
+      `${head}\n${emojiRow()}  ${fmt(game.score)} / ${fmt(game.maps.length * 5000)}` +
+      (game.ranked ? '' : `\nGame code: ${codeFor(game.pool, game.rounds, game.seed)}`) +
+      `\n${SHARE_URL}`
+    );
+  }
   $('shareBtn').onclick = async () => {
-    const t = game.ranked
-      ? `Lost in Savage daily ranked (${dayLabel(game.day)}): ${fmt(game.score)} / ${fmt(game.maps.length * 5000)}. Can you beat me?`
-      : `Lost in Savage: ${fmt(game.score)} / ${fmt(game.maps.length * 5000)} (${POOLS[game.pool].label}, ${game.maps.length} rounds). Can you beat me? Game code: ${codeFor(game.pool, game.rounds, game.seed)}`;
     try {
-      await navigator.clipboard.writeText(t);
-      toast('Copied! Send it to a friend.');
+      await navigator.clipboard.writeText(shareText());
+      toast('Copied! Paste it into Discord or send it to a friend.');
     } catch (e) {
-      toast('Code: ' + codeFor(game.pool, game.rounds, game.seed));
+      toast(game.ranked ? "Couldn't copy. Try again." : 'Code: ' + codeFor(game.pool, game.rounds, game.seed));
     }
   };
   function toast(t) {
@@ -1386,7 +1402,7 @@
     resize();
     requestAnimationFrame(frame);
     try {
-      INDEX = await (await fetch('data/index.json')).json();
+      INDEX = await (await fetch('data/index.json?v=' + DATA_V)).json();
     } catch (e) {
       setLoading(true, 'Could not load the map list.');
       return;
