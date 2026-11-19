@@ -4,6 +4,6 @@
    an older "anon public" key also works).
    The publishable key is meant to be public: the database rules in leaderboard.sql decide what it can do. */
 window.LIS_CONFIG = {
-  supabaseUrl: 'https://weluatexiygzjrjnhbhu.supabase.co/rest/v1/',
+  supabaseUrl: 'https://weluatexiygzjrjnhbhu.supabase.co',
   supabaseAnonKey: 'sb_publishable_KVbFVLnTKZfPDBqQqCvr1Q_FNT3wLDC',
 };

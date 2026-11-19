@@ -831,7 +831,13 @@
   const CFG = window.LIS_CONFIG || {};
   const SB =
     CFG.supabaseUrl && CFG.supabaseAnonKey
-      ? { url: CFG.supabaseUrl.replace(/\/+$/, ''), key: CFG.supabaseAnonKey }
+      ? {
+          url: CFG.supabaseUrl
+            .trim()
+            .replace(/\/+$/, '')
+            .replace(/\/rest\/v1$/i, ''),
+          key: CFG.supabaseAnonKey,
+        }
       : null;
   // an anonymous, random id per browser so each player has one entry per day
   function playerId() {
