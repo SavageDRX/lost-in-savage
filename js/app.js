@@ -267,7 +267,7 @@
     return `background-size:${1440 * s}px auto;background-position:-${(m.t % c) * 96 * s}px -${Math.floor(m.t / c) * 96 * s}px`;
   }
   // bump when map data changes so browsers don't keep an old copy of the map list
-  const DATA_V = '1.3';
+  const DATA_V = '1.4';
   function chips() {
     $('chipRound').innerHTML = game
       ? `Round <b>${Math.min(game.i + 1, game.maps.length)}</b> / ${game.maps.length}`
