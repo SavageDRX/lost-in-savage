@@ -27,9 +27,16 @@
     v: { label: 'Very easy', f: m => !VE_SKIP.has(m.id) && (/s2games/i.test(m.author) || m.plays > 500) },
     e: { label: 'Easy', f: m => m.plays > 200 },
     m: { label: 'Medium', f: m => m.plays >= 110 && m.plays <= 200 },
-    h: { label: 'Hard', f: m => m.plays >= 50 && m.plays < 110 },
+    h: { label: 'Hard', f: m => m.plays >= 70 && m.plays < 110 },
     a: { label: 'Every map', f: m => true },
-    r: { label: 'Daily ranked', f: m => m.plays >= 110 },
+  };
+  // clock: m:ss (h:mm:ss past an hour)
+  const fmtTime = ms => {
+    const s = Math.max(0, Math.round((ms || 0) / 1000)),
+      h = Math.floor(s / 3600),
+      m = Math.floor((s % 3600) / 60),
+      x = String(s % 60).padStart(2, '0');
+    return h ? `${h}:${String(m).padStart(2, '0')}:${x}` : `${m}:${x}`;
   };
   const store = {
     get(k) {
@@ -59,7 +66,7 @@
     game = null,
     opts = {
       pool: 'e', // every visit starts on Easy
-      rounds: +(store.get('lis_rounds') || 5),
+      rounds: 5, // every visit starts on 5 rounds, the leaderboard length (other lengths are in Settings)
     };
   const cache = {};
   const bcache = {};
@@ -227,7 +234,7 @@
 
   /* ---------- panels ---------- */
   function panel(name) {
-    for (const p of ['pStart', 'pPick', 'pPin', 'pResult', 'pEnd']) $(p).hidden = p !== name;
+    for (const p of ['pStart', 'pLobby', 'pPick', 'pPin', 'pResult', 'pEnd']) $(p).hidden = p !== name;
   }
   function seg(id, key) {
     const el = $(id);
@@ -239,7 +246,6 @@
       const b = e.target.closest('button');
       if (!b) return;
       opts[key] = key === 'rounds' ? +b.dataset.v : b.dataset.v;
-      store.set('lis_' + key, opts[key]);
       upd();
     };
     upd();
@@ -249,6 +255,11 @@
     $('bestTxt').innerHTML = b
       ? `Your best (${POOLS[opts.pool].label}, ${opts.rounds} rounds): <b>${fmt(+b)}</b> / ${fmt(opts.rounds * 5000)}`
       : '';
+    const custom = opts.rounds !== LB_ROUNDS;
+    $('roundsNote').hidden = !custom;
+    if (custom)
+      $('roundsNote').innerHTML =
+        `Playing <b>${opts.rounds} rounds</b>, so these games won't count for the leaderboard. <button class="link" id="roundsBack" type="button">Back to 5</button>`;
   }
   function thumbStyle(m, size) {
     const c = 15,
@@ -263,25 +274,36 @@
       : 'Round <b>–</b>';
     $('chipScore').innerHTML = `Score <b>${fmt(game ? game.score : 0)}</b>`;
     $('chipDiff').hidden = !game;
-    if (game) $('chipDiff').innerHTML = `<b>${game.ranked ? 'Daily ranked' : POOLS[game.pool].label}</b>`;
+    $('chipTime').hidden = !game;
+    $('chipLob').hidden = !(game && game.lobby && !game.over);
+    if (game) $('chipDiff').innerHTML = `<b>${modeLabel()}</b>`;
+    tick();
   }
+  const modeLabel = () => (game.lobby ? `Lobby · ${POOLS[game.pool].label}` : POOLS[game.pool].label);
+  // time spent guessing: finished rounds plus the round in progress (the clock stops on the results screen)
+  const usedMs = () =>
+    game ? game.res.reduce((a, r) => a + (r.ms || 0), 0) + (game.t0 ? Date.now() - game.t0 : 0) : 0;
+  function tick() {
+    if (game) $('chipTime').innerHTML = `Time <b>${fmtTime(usedMs())}</b>`;
+  }
+  setInterval(tick, 250);
 
   /* ---------- game ---------- */
   function codeFor(pool, rounds, seed) {
     return `${pool.toUpperCase()}${rounds}-${seed}`;
   }
   function parseCode(c) {
-    const m = /^([VEMHA])(3|5|10)-(\d{1,9})$/.exec(c.trim().toUpperCase());
+    const m = /^([VEMHA])(3|5|10|15|20)-(\d{1,9})$/.exec(c.trim().toUpperCase());
     return m ? { pool: m[1].toLowerCase(), rounds: +m[2], seed: +m[3] } : null;
   }
-  function start(pool, rounds, seed) {
+  function makeGame(pool, rounds, seed) {
     const list = INDEX.filter(POOLS[pool].f);
     const rnd = mulberry(seed);
     const order = list
       .map(m => [rnd(), m])
       .sort((a, b) => a[0] - b[0])
       .map(x => x[1]);
-    game = {
+    return {
       pool,
       rounds,
       seed,
@@ -291,8 +313,14 @@
       score: 0,
       res: [],
       list,
+      t0: 0,
     };
-    store.set('lis_inranked', '0');
+  }
+  // fresh: a new game from Play (seed never shown); postable: a fresh 5-round game, which can go on the leaderboard
+  function start(pool, rounds, seed, fresh) {
+    game = makeGame(pool, rounds, seed);
+    game.fresh = !!fresh;
+    game.postable = !!fresh && rounds === LB_ROUNDS;
     $('search').value = '';
     $('intro').hidden = true;
     $('menuBtn').hidden = false;
@@ -300,24 +328,34 @@
   }
   async function nextRound() {
     game.i++;
+    game.cur = null;
+    game.t0 = 0;
     if (game.i >= game.maps.length) return finish();
     chips();
     panel('pPick');
     renderGrid();
-    const m = game.maps[game.i];
+    const g = game,
+      m = game.maps[game.i];
     try {
       const spot = await show(m.id, game.spots[game.i]);
-      if (!spot) return;
+      if (!spot || g !== game) return;
       game.cur = { m, spot, pick: null, pin: null };
     } catch (err) {
       setLoading(true, 'Could not load this map. Check your connection and try again.');
       return;
     }
+    // the clock starts once you can see the spot
+    game.t0 = Date.now();
+    tick();
     $('statusL').innerHTML =
-      `Round <b>${game.i + 1}</b> of ${game.maps.length} · ${game.ranked ? `Daily ranked · ${dayLabel(game.day)}` : POOLS[game.pool].label}`;
-    $('statusR').innerHTML = game.ranked
-      ? `Resets in <b>${untilReset()}</b>`
-      : `Game code <b>${codeFor(game.pool, game.rounds, game.seed)}</b>`;
+      `Round <b>${game.i + 1}</b> of ${game.maps.length} · ${game.lobby ? 'Lobby · ' : ''}${POOLS[game.pool].label}`;
+    $('statusR').innerHTML = game.lobby
+      ? `Lobby code <b>${esc(lob ? lob.code : '')}</b>`
+      : game.fresh
+        ? game.postable
+          ? 'Leaderboard game'
+          : `${game.rounds} rounds · not on the leaderboard`
+        : `Game code <b>${codeFor(game.pool, game.rounds, game.seed)}</b>`;
     const nx = game.maps[game.i + 1];
     if (nx) loadMap(nx.id);
   }
@@ -382,6 +420,7 @@
     if (!game.cur.pin) return;
     score();
   };
+  const ptsFor = (dist, m) => (dist < 3.2 ? 5000 : Math.round(5000 * Math.exp(-(dist - 3.2) / (m.W * 0.4))));
   function score() {
     const c = game.cur,
       m = c.m,
@@ -392,11 +431,23 @@
       dist = null;
     if (ok) {
       dist = Math.hypot((c.pin.u - tu) * m.W, (c.pin.v - tv) * m.H);
-      pts = dist < 3.2 ? 5000 : Math.round(5000 * Math.exp(-(dist - 3.2) / (m.W * 0.4)));
+      pts = ptsFor(dist, m);
     }
+    const ms = game.t0 ? Date.now() - game.t0 : 0;
+    game.t0 = 0;
+    game.cur = null;
+    const r = { m, pick: c.pick, pts, dist, ok, ms, pin: c.pin, spot: c.spot };
     game.score += pts;
-    game.res.push({ m, pick: c.pick, pts, dist, ok });
+    game.res.push(r);
     chips();
+    renderResult(r);
+    if (game.lobby) lobbySubmit(r, game.i + 1);
+  }
+  function renderResult(r) {
+    const { m, pts, dist, ok } = r,
+      c = { pick: r.pick, pin: r.pin, spot: r.spot };
+    const tu = c.spot.x / (m.W * 100),
+      tv = 1 - c.spot.y / (m.H * 100);
     const V = $('verdict');
     if (!ok) {
       V.className = 'verdict bad';
@@ -416,6 +467,7 @@
     if (ok)
       $('resDetail').innerHTML =
         `<b>${esc(m.name)}</b> by ${esc(m.author)}. Your pin was <b>${dist.toFixed(1)} tiles</b> away (${fmt(Math.round(dist * 100))} game units).`;
+    $('resDetail').innerHTML += ` Took <b>${fmtTime(r.ms)}</b>.`;
     $('ptsNum').textContent = fmt(pts);
     $('ptsBar').style.width = '0';
     requestAnimationFrame(() =>
@@ -436,12 +488,15 @@
         PIN(P[0], P[1], '#f0c46a', Math.hypot(P[0] - T[0], P[1] - T[1]) > 90 ? 'You' : '');
     }
     svg += PIN(T[0], T[1], '#7fb24a', 'Here');
-    if (game.ranked) saveRanked();
+    game.resSvg = svg;
     $('resSvg').innerHTML = svg;
+    $('nextBtn').disabled = false;
     $('nextBtn').textContent = game.i + 1 >= game.maps.length ? 'See final score' : 'Next round';
+    $('lobRound').hidden = !game.lobby;
     panel('pResult');
+    if (game.lobby) lobbyUI();
   }
-  $('nextBtn').onclick = () => nextRound();
+  $('nextBtn').onclick = () => (game && game.lobby ? lobbyNext() : nextRound());
   const RANKS = [
     [0, 'Lost Nomad'],
     [0.15, 'Scavenger'],
@@ -451,36 +506,45 @@
     [0.84, 'Behemoth'],
   ];
   function finish() {
+    game.over = true;
+    game.t0 = 0;
     const max = game.maps.length * 5000,
       f = game.score / max;
     const rank = RANKS.filter(r => f >= r[0]).pop()[1];
     $('rank').textContent = rank;
     $('total').innerHTML = `${fmt(game.score)} <small>/ ${fmt(max)}</small>`;
+    $('endTime').innerHTML = `Time <b>${fmtTime(usedMs())}</b>`;
     $('emojiRow').textContent = emojiRow();
-    $('rankedEnd').hidden = !game.ranked;
-    $('shareBtn').textContent = game.ranked ? 'Copy result' : 'Copy result & code';
-    $('againBtn').textContent = game.ranked ? 'Main menu' : 'Play again';
-    if (game.ranked) {
-      rankedFinish();
+    $('lobEnd').hidden = !game.lobby;
+    $('lobEndMsg').hidden = !game.lobby;
+    // only code games show their code: a normal game's seed stays hidden so nobody can replay it
+    const showCode = !game.lobby && !game.fresh;
+    $('shareBtn').textContent = showCode ? 'Copy result & code' : 'Copy result';
+    $('againBtn').textContent = 'Play again';
+    postFinish();
+    if (game.lobby) {
+      $('endSub').innerHTML =
+        `Lobby <b style="color:var(--accent2)">${esc(lob ? lob.code : '')}</b> · ${POOLS[game.pool].label}`;
     } else {
       const key = `lis_best_${game.pool}${game.rounds}`,
         prev = +(store.get(key) || 0);
       if (game.score > prev) store.set(key, game.score);
       $('endSub').innerHTML =
-        `${POOLS[game.pool].label} · code <b style="color:var(--accent2)">${codeFor(game.pool, game.rounds, game.seed)}</b>${game.score > prev && prev ? ' · new best!' : ''}`;
+        `${POOLS[game.pool].label}${showCode ? ` · code <b style="color:var(--accent2)">${codeFor(game.pool, game.rounds, game.seed)}</b>` : ''}${game.score > prev && prev ? ' · new best!' : ''}`;
     }
     $('sumTable').innerHTML = game.res
       .map(
         (r, i) =>
-          `<tr><td class="th"><div style="${thumbStyle(r.m, 40)}"></div></td><td class="n">${i + 1}. ${esc(r.m.name)}<small>${r.ok ? `${r.dist.toFixed(1)} tiles away` : `you said ${esc(r.pick.name)}`}</small></td><td class="p">${fmt(r.pts)}</td></tr>`
+          `<tr><td class="th"><div style="${thumbStyle(r.m, 40)}"></div></td><td class="n">${i + 1}. ${esc(r.m.name)}<small>${r.missed ? 'out of time' : r.ok ? (r.dist == null ? 'spot on' : `${r.dist.toFixed(1)} tiles away`) : `you said ${r.pick ? esc(r.pick.name) : 'nothing'}`}${r.missed ? '' : ` · ${fmtTime(r.ms)}`}</small></td><td class="p">${fmt(r.pts)}</td></tr>`
       )
       .join('');
     panel('pEnd');
     chips();
+    if (game.lobby) lobbyUI();
     $('statusL').textContent = 'Game over. Look around as long as you like.';
   }
   function mainMenu() {
-    store.set('lis_inranked', '0');
+    if (lob) leaveLobby();
     game = null;
     showSeq++;
     setLoading(false);
@@ -489,12 +553,10 @@
     showBest();
     $('intro').hidden = false;
     $('menuBtn').hidden = true;
-    updateRankedCard();
-    $('startBoard').hidden = true;
     $('statusL').textContent = 'Every view is a real spot on a real Savage map, rebuilt from the map files.';
     $('statusR').textContent = '';
   }
-  $('againBtn').onclick = mainMenu;
+  $('againBtn').onclick = () => (game && game.lobby && lob ? lobbyAgain() : mainMenu());
   $('menuBtn').onclick = mainMenu;
   $('logoBtn').onclick = mainMenu;
   $('introPlay').onclick = () => $('playBtn').click();
@@ -502,13 +564,21 @@
   const SHARE_URL = 'https://savagedrx.github.io/lost-in-savage/';
   const emojiRow = () =>
     game.res.map(r => (!r.ok ? '🟥' : r.pts >= 4500 ? '🟩' : r.pts >= 2500 ? '🟨' : '🟧')).join('');
+  const ordinal = n => n + (n % 100 >= 11 && n % 100 <= 13 ? 'th' : ['th', 'st', 'nd', 'rd'][n % 10] || 'th');
   function shareText() {
-    const head = game.ranked
-      ? `Lost in Savage – Daily ranked, ${dayLabel(game.day)}`
+    const head = game.lobby
+      ? `Lost in Savage – Lobby · ${POOLS[game.pool].label}, ${game.maps.length} rounds`
       : `Lost in Savage – ${POOLS[game.pool].label}, ${game.maps.length} rounds`;
+    let place = '';
+    if (game.lobby && lob && lob.d) {
+      const st = standings(lob.d.players),
+        i = st.findIndex(p => p.id === lob.d.me);
+      if (i >= 0 && st.length > 1) place = `\nFinished ${ordinal(i + 1)} of ${st.length}`;
+    }
     return (
-      `${head}\n${emojiRow()}  ${fmt(game.score)} / ${fmt(game.maps.length * 5000)}` +
-      (game.ranked ? '' : `\nGame code: ${codeFor(game.pool, game.rounds, game.seed)}`) +
+      `${head}\n${emojiRow()}  ${fmt(game.score)} / ${fmt(game.maps.length * 5000)} · ${fmtTime(usedMs())}` +
+      place +
+      (game.lobby || game.fresh ? '' : `\nGame code: ${codeFor(game.pool, game.rounds, game.seed)}`) +
       `\n${SHARE_URL}`
     );
   }
@@ -517,7 +587,9 @@
       await navigator.clipboard.writeText(shareText());
       toast('Copied! Paste it into Discord or send it to a friend.');
     } catch (e) {
-      toast(game.ranked ? "Couldn't copy. Try again." : 'Code: ' + codeFor(game.pool, game.rounds, game.seed));
+      toast(
+        game.lobby || game.fresh ? "Couldn't copy. Try again." : 'Code: ' + codeFor(game.pool, game.rounds, game.seed)
+      );
     }
   };
   function toast(t) {
@@ -527,14 +599,31 @@
     clearTimeout(toast.t);
     toast.t = setTimeout(() => el.classList.remove('on'), 2600);
   }
-  $('playBtn').onclick = () => start(opts.pool, opts.rounds, Math.floor(Math.random() * 900000) + 100000);
+  $('roundsNote').addEventListener('click', e => {
+    if (e.target.id === 'roundsBack') $('segRounds').querySelector('[data-v="5"]').click();
+  });
+  $('playBtn').onclick = () => start(opts.pool, opts.rounds, Math.floor(Math.random() * 900000) + 100000, true);
   $('codeBtn').onclick = () => {
-    const c = parseCode($('codeIn').value);
+    const v = $('codeIn').value.trim().toUpperCase();
+    // a 6-letter code is a lobby
+    if (SB && /^[A-Z2-9]{6}$/.test(v)) return openLobby(v);
+    const c = parseCode(v);
     if (!c) {
       toast("That code doesn't look right. It should look like P5-483920.");
       return;
     }
-    start(c.pool, c.rounds, c.seed);
+    start(c.pool, c.rounds, c.seed, false);
+  };
+  // make a new code to share (with the maps and rounds chosen above); code games can't go on the leaderboard
+  $('newCodeBtn').onclick = async () => {
+    const c = codeFor(opts.pool, opts.rounds, Math.floor(Math.random() * 900000) + 100000);
+    $('codeIn').value = c;
+    try {
+      await navigator.clipboard.writeText(c);
+      toast(`Code ${c} copied. Send it to your friends, then press Play code.`);
+    } catch (e) {
+      toast(`Your code is ${c}. Send it to your friends, then press Play code.`);
+    }
   };
   $('codeIn').addEventListener('keydown', e => {
     if (e.key === 'Enter') $('codeBtn').click();
@@ -547,117 +636,16 @@
 
   // test hooks (expose the answer!) only on a local dev server with ?debug
   const DEBUG = /[?&]debug\b/.test(location.search) && /^(localhost|127\.0\.0\.1)$/.test(location.hostname);
-  /* ---------- daily ranked: 3 Easy + 2 Medium, same for everyone, new set at 04:00 GMT ---------- */
-  const DAY0 = Date.UTC(2026, 0, 1),
-    DAYMS = 86400000,
-    RESET_H = 4;
-  const rankedDay = () => Math.floor((Date.now() - RESET_H * 3600000 - DAY0) / DAYMS);
-  const dayLabel = d =>
-    new Date(DAY0 + d * DAYMS + RESET_H * 3600000).toLocaleDateString('en-GB', {
-      weekday: 'short',
-      day: 'numeric',
-      month: 'short',
-      timeZone: 'UTC',
-    });
-  function untilReset() {
-    const next = DAY0 + (rankedDay() + 1) * DAYMS + RESET_H * 3600000,
-      ms = Math.max(0, next - Date.now());
-    const h = Math.floor(ms / 3600000),
+  /* ---------- weekly leaderboards start every Monday at 00:00 GMT ---------- */
+  const WEEK0 = Date.UTC(2026, 0, 5), // a Monday
+    WEEKMS = 7 * 86400000;
+  const weekNo = () => Math.floor((Date.now() - WEEK0) / WEEKMS);
+  function untilWeekReset() {
+    const ms = WEEK0 + (weekNo() + 1) * WEEKMS - Date.now();
+    const d = Math.floor(ms / 86400000),
+      h = Math.floor((ms % 86400000) / 3600000),
       m = Math.floor((ms % 3600000) / 60000);
-    return h ? `${h}h ${m}m` : `${m}m`;
-  }
-  function rankedSet(day) {
-    let h = 0x9e3779b9 ^ (day * 0x85ebca6b);
-    h = Math.imul(h ^ (h >>> 16), 0x45d9f3b);
-    h = Math.imul(h ^ (h >>> 13), 0xc2b2ae35);
-    h ^= h >>> 16;
-    const rnd = mulberry(h);
-    const pick = (pool, n) =>
-      INDEX.filter(POOLS[pool].f)
-        .map(m => [rnd(), m])
-        .sort((a, b) => a[0] - b[0])
-        .slice(0, n)
-        .map(x => x[1]);
-    const maps = [...pick('e', 3), ...pick('m', 2)]
-      .map(m => [rnd(), m])
-      .sort((a, b) => a[0] - b[0])
-      .map(x => x[1]);
-    return { maps, spots: maps.map(() => Math.floor(rnd() * 1e9) + 1) };
-  }
-  function loadRanked() {
-    try {
-      const j = JSON.parse(store.get('lis_ranked3') || 'null');
-      return j && j.day === rankedDay() ? j : null;
-    } catch (e) {
-      return null;
-    }
-  }
-  function saveRanked(extra) {
-    const prev = loadRanked() || {};
-    store.set(
-      'lis_ranked3',
-      JSON.stringify({
-        ...prev,
-        day: game.day,
-        i: game.i,
-        score: game.score,
-        res: game.res.map(r => ({ id: r.m.id, pick: r.pick.id, pts: r.pts, dist: r.dist, ok: r.ok })),
-        ...(extra || {}),
-      })
-    );
-  }
-  function startRanked() {
-    const day = rankedDay(),
-      saved = loadRanked();
-    if (saved && saved.done) {
-      showStartBoard(true);
-      toast("You've played today's ranked. A new one starts in " + untilReset() + '.');
-      return;
-    }
-    const { maps, spots } = rankedSet(day);
-    game = {
-      pool: 'r',
-      rounds: 5,
-      day,
-      ranked: true,
-      maps,
-      spots,
-      i: -1,
-      score: 0,
-      res: [],
-      list: INDEX.filter(POOLS.r.f),
-    };
-    if (saved) {
-      const byId = id => INDEX.find(m => m.id === id);
-      game.res = (saved.res || [])
-        .map(r => ({ m: byId(r.id), pick: byId(r.pick), pts: r.pts, dist: r.dist, ok: r.ok }))
-        .filter(r => r.m && r.pick);
-      game.i = game.res.length - 1;
-      game.score = game.res.reduce((a, r) => a + r.pts, 0);
-      if (game.res.length) toast("Picking up today's ranked where you left off.");
-    } else store.set('lis_ranked3', JSON.stringify({ day, i: -1, score: 0, res: [] }));
-    store.set('lis_inranked', '1');
-    $('search').value = '';
-    $('intro').hidden = true;
-    $('menuBtn').hidden = false;
-    nextRound();
-  }
-  function updateRankedCard() {
-    const saved = loadRanked();
-    $('rankedInfo').innerHTML =
-      `Resets daily at 4:00 GMT (in <b>${untilReset()}</b>).` +
-      (saved && saved.done
-        ? ` You scored <b>${fmt(saved.score)}</b> today.`
-        : saved && saved.res && saved.res.length
-          ? ` You're on round ${saved.res.length + 1} of 5.`
-          : '');
-    $('rankedBtn').textContent =
-      saved && saved.done
-        ? 'Played today ✓'
-        : saved && saved.res && saved.res.length
-          ? 'Continue ranked'
-          : "Play today's ranked";
-    $('rankedBtn').disabled = !!(saved && saved.done);
+    return d ? `${d}d ${h}h` : h ? `${h}h ${m}m` : `${m}m`;
   }
 
   /* name filter: blocks slurs and obvious abuse, including l33t spellings, spacing and repeated letters */
@@ -839,11 +827,11 @@
     if (e.key === 'Enter') $('nameBtn').click();
   });
 
-  /* ---------- Global leaderboard ----------
+  /* ---------- Leaderboards: weekly and all time, one board per difficulty and round count ----------
      Two possible backends:
      1. Supabase (for a public copy such as GitHub Pages): fill in js/config.js. See README.
      2. The shared database of a Claude-hosted artifact, when the page runs there.
-     With neither, ranked still works and the leaderboard UI hides itself. */
+     With neither, the leaderboard UI hides itself. */
   const CFG = window.LIS_CONFIG || {};
   const SB =
     CFG.supabaseUrl && CFG.supabaseAnonKey
@@ -855,15 +843,17 @@
           key: CFG.supabaseAnonKey,
         }
       : null;
-  // an anonymous, random id per browser so each player has one entry per day
+  const newUuid = () =>
+    crypto.randomUUID
+      ? crypto.randomUUID()
+      : '10000000-1000-4000-8000-100000000000'.replace(/[018]/g, c =>
+          (c ^ (crypto.getRandomValues(new Uint8Array(1))[0] & (15 >> (c / 4)))).toString(16)
+        );
+  // an anonymous, random id per browser so each player has one entry per board per day
   function playerId() {
     let id = store.get('lis_player');
     if (!/^[0-9a-f-]{36}$/.test(id || '')) {
-      id = crypto.randomUUID
-        ? crypto.randomUUID()
-        : '10000000-1000-4000-8000-100000000000'.replace(/[018]/g, c =>
-            (c ^ (crypto.getRandomValues(new Uint8Array(1))[0] & (15 >> (c / 4)))).toString(16)
-          );
+      id = newUuid();
       store.set('lis_player', id);
     }
     return id;
@@ -875,53 +865,78 @@
     SB.key.startsWith('eyJ')
       ? { apikey: SB.key, Authorization: `Bearer ${SB.key}`, ...extra }
       : { apikey: SB.key, ...extra };
+  const better = (a, b) => !b || a.score > b.score || (a.score === b.score && a.time < b.time);
   const backends = {
     supabase: {
-      me: () => playerId(),
-      async list(day) {
+      // q = { diff, rounds, weekly }; returns the top 50 (each player's best) and where you stand
+      async list(q) {
         const r = await withTimeout(
-          fetch(
-            `${SB.url}/rest/v1/ranked_scores?select=player,name,score&day=eq.${day}&order=score.desc,created_at.asc&limit=100`,
-            { headers: sbHeaders() }
-          )
+          fetch(`${SB.url}/rest/v1/rpc/leaderboard`, {
+            method: 'POST',
+            headers: sbHeaders({ 'Content-Type': 'application/json' }),
+            body: JSON.stringify({ p_diff: q.diff, p_rounds: q.rounds, p_weekly: q.weekly, p_player: playerId() }),
+          })
         );
         if (!r.ok) throw new Error('http ' + r.status);
-        return (await r.json()).map(x => ({ id: x.player, name: x.name, score: x.score }));
+        const j = (await r.json()) || {};
+        return { rows: j.rows || [], mine: j.mine || null, total: j.total || 0 };
       },
       async submit(e) {
         const r = await withTimeout(
-          fetch(`${SB.url}/rest/v1/ranked_scores`, {
+          fetch(`${SB.url}/rest/v1/scores`, {
             method: 'POST',
             headers: sbHeaders({ 'Content-Type': 'application/json', Prefer: 'return=minimal' }),
-            body: JSON.stringify({ day: e.day, player: playerId(), name: e.name, score: e.score }),
+            body: JSON.stringify({
+              player: playerId(),
+              name: e.name,
+              diff: e.diff,
+              rounds: e.rounds,
+              score: e.score,
+              time_ms: e.time,
+              seed: e.seed,
+            }),
           })
         );
-        // 409 = this browser already has a score today (the first score counts)
+        // 409 = this game has already been posted
         if (r.status === 409) throw Object.assign(new Error('dup'), { code: 'duplicate' });
         if (!r.ok) throw new Error('http ' + r.status);
       },
     },
+    // Claude artifact database: one document per player with their best on each board, all time and this week
     claude: {
       db: null,
       uid: null,
-      me() {
-        return this.uid;
-      },
-      async list(day) {
-        const snap = await withTimeout(
-          this.db.collection('ranked').where('day', '==', day).orderBy('score', 'desc').limit(100).get()
-        );
-        return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      async list(q) {
+        const key = q.diff + q.rounds,
+          wk = weekNo();
+        const snap = await withTimeout(this.db.collection('ranked').limit(1000).get());
+        const rows = snap.docs
+          .map(d => {
+            const x = d.data() || {},
+              b = q.weekly ? x.week === wk && x.wbest && x.wbest[key] : x.best && x.best[key];
+            return b ? { id: d.id, name: x.name, score: b.score, time: b.time, at: b.at || 0 } : null;
+          })
+          .filter(Boolean)
+          .sort((a, b) => byScoreTime(a, b) || a.at - b.at)
+          .map((r, i) => ({ ...r, pos: i + 1, me: r.id === this.uid }));
+        return { rows: rows.slice(0, TOPN), mine: rows.find(r => r.me) || null, total: rows.length };
       },
       async submit(e) {
         if (!this.uid) throw Object.assign(new Error('no user'), { code: 'invalid_argument' });
-        // only the first score of the day counts: never overwrite one that's already there
-        const prev = await this.db.collection('ranked').doc(this.uid).get();
-        if (prev.exists && prev.data().day === e.day) throw Object.assign(new Error('dup'), { code: 'duplicate' });
-        await this.db
-          .collection('ranked')
-          .doc(this.uid)
-          .set({ name: e.name, score: e.score, day: e.day, at: Date.now(), rounds: e.rounds });
+        const ref = this.db.collection('ranked').doc(this.uid);
+        const prev = await ref.get();
+        const d = (prev.exists && prev.data()) || {};
+        const key = e.diff + e.rounds,
+          wk = weekNo(),
+          tag = key + ':' + e.seed;
+        const seeds = Array.isArray(d.seeds) ? d.seeds : [];
+        if (seeds.includes(tag)) throw Object.assign(new Error('dup'), { code: 'duplicate' });
+        const ent = { score: e.score, time: e.time, at: Date.now() };
+        const best = { ...(d.best || {}) },
+          wbest = d.week === wk ? { ...(d.wbest || {}) } : {};
+        if (better(ent, best[key])) best[key] = ent;
+        if (better(ent, wbest[key])) wbest[key] = ent;
+        await ref.set({ name: e.name, at: Date.now(), best, week: wk, wbest, seeds: [...seeds, tag].slice(-300) });
       },
     },
   };
@@ -940,78 +955,136 @@
       BOARD = null;
     }
   })();
-  async function fetchBoard(day) {
-    await boardReady;
-    if (!BOARD) return null;
-    // shared data is untrusted: keep only well-formed rows with acceptable names
-    return (await BOARD.list(day)).filter(
-      r =>
-        typeof r.score === 'number' &&
-        r.score >= 0 &&
-        r.score <= 25000 &&
-        typeof r.name === 'string' &&
-        !nameProblem(r.name)
-    );
-  }
-  async function renderBoard(el, day) {
+  const TOPN = 50; // players shown on each board
+  const LB_ROUNDS = 5; // only 5-round games go on the leaderboards
+  // best score first; equal scores go to whoever was quicker
+  const byScoreTime = (a, b) =>
+    b.score - a.score || (a.time == null ? 1e12 : a.time) - (b.time == null ? 1e12 : b.time);
+  // shared data is untrusted: keep only well-formed rows with acceptable names
+  const goodRow = (r, rounds) =>
+    r &&
+    typeof r.score === 'number' &&
+    r.score >= 0 &&
+    r.score <= rounds * 5000 &&
+    typeof r.time === 'number' &&
+    r.time >= 0 &&
+    typeof r.name === 'string' &&
+    !nameProblem(r.name);
+  async function renderBoard(el, q) {
     el.hidden = false;
-    const head = `<h4>Today's leaderboard · ${dayLabel(day)}</h4>`;
+    const my = (el.seq = (el.seq || 0) + 1);
+    const head = `<h4>${q.weekly ? 'This week' : 'All time'} · ${POOLS[q.diff].label}</h4>`;
+    const foot = n =>
+      `<div class="bfoot">${q.weekly ? `New week in ${untilWeekReset()} (Monday 00:00 GMT)` : 'Best game per player'}${n ? ` · ${fmt(n)} player${n === 1 ? '' : 's'}` : ''}</div>`;
     el.innerHTML = head + '<div class="empty">Loading…</div>';
-    let rows;
+    let res;
     try {
-      rows = await fetchBoard(day);
+      await boardReady;
+      res = BOARD ? await BOARD.list(q) : null;
     } catch (e) {
-      rows = undefined;
+      res = undefined;
     }
-    if (rows === null) {
-      el.innerHTML =
-        head + '<div class="empty">The global leaderboard isn\'t available on this copy of the game.</div>';
+    if (my !== el.seq) return;
+    if (res === null) {
+      el.innerHTML = head + '<div class="empty">The leaderboards aren\'t available on this copy of the game.</div>';
       return;
     }
-    if (rows === undefined) {
+    if (res === undefined) {
       el.innerHTML =
         head + '<div class="empty">The leaderboard can\'t be reached right now. Try again in a moment.</div>';
       return;
     }
+    // only the top 50 are shown (trimmed here too, in case the server sends more)
+    const all = res.rows.filter(r => goodRow(r, q.rounds)),
+      rows = all.slice(0, TOPN);
     if (!rows.length) {
-      el.innerHTML = head + '<div class="empty">No scores yet today. Be the first!</div>';
+      el.innerHTML =
+        head +
+        `<div class="empty">No scores yet${q.weekly ? ' this week' : ''}. Finish a ${POOLS[q.diff].label} game to be the first!</div>` +
+        foot(0);
       return;
     }
-    const me = BOARD.me();
+    const li = (r, pos) =>
+      `<li class="${r.me ? 'me' : ''}"><span class="pos">${pos}</span><span class="nm">${esc(r.name)}</span><span class="tm">${fmtTime(r.time)}</span><span class="sc">${fmt(r.score)}</span></li>`;
+    const mine = rows.some(r => r.me)
+      ? null
+      : res.mine && goodRow(res.mine, q.rounds)
+        ? res.mine
+        : all.find(r => r.me) || null;
     el.innerHTML =
       head +
       '<ol>' +
-      rows
-        .map(
-          (r, i) =>
-            `<li class="${r.id === me ? 'me' : ''}"><span class="pos">${i + 1}</span><span class="nm">${esc(r.name)}</span><span class="sc">${fmt(r.score)}</span></li>`
-        )
-        .join('') +
-      '</ol>';
+      rows.map((r, i) => li(r, i + 1)).join('') +
+      (mine ? `<li class="gap">⋯</li>` + li({ ...mine, me: true }, mine.pos) : '') +
+      '</ol>' +
+      foot(res.total);
   }
-  function showStartBoard(force) {
-    const el = $('startBoard');
-    if (!el.hidden && !force) {
-      el.hidden = true;
-      return;
-    }
-    renderBoard(el, rankedDay());
+  const segPick = (el, val) => {
+    for (const b of el.children) b.classList.toggle('on', b.dataset.v === String(val));
+  };
+  const segClick = (id, fn) =>
+    ($(id).onclick = e => {
+      const b = e.target.closest('button');
+      if (b) fn(b.dataset.v);
+    });
+  /* the leaderboard window, from the main menu */
+  const bq = { diff: 'e', rounds: LB_ROUNDS, weekly: true };
+  function openBoards() {
+    bq.diff = game ? game.pool : opts.pool;
+    $('boardModal').hidden = false;
+    refreshBoards();
   }
-  function rankedFinish() {
-    saveRanked({ done: true });
-    $('endSub').innerHTML =
-      `Daily ranked <b style="color:var(--accent2)">${dayLabel(game.day)}</b> · new set in ${untilReset()}`;
-    const saved = loadRanked();
-    $('nameBox').hidden = !!saved.sent;
-    $('nameMsg').classList.remove('bad');
-    $('nameMsg').textContent = '2–16 letters, numbers, spaces, _ - or .';
+  function refreshBoards() {
+    segPick($('bmPeriod'), bq.weekly ? 'w' : 'a');
+    segPick($('bmPool'), bq.diff);
+    renderBoard($('bmBoard'), { ...bq });
+  }
+  segClick('bmPeriod', v => {
+    bq.weekly = v === 'w';
+    refreshBoards();
+  });
+  segClick('bmPool', v => {
+    bq.diff = v;
+    refreshBoards();
+  });
+  $('boardBtn').onclick = openBoards;
+  $('boardNav').onclick = openBoards;
+  $('boardClose').onclick = () => ($('boardModal').hidden = true);
+  $('boardModal').addEventListener('click', e => {
+    if (e.target === $('boardModal')) $('boardModal').hidden = true;
+  });
+  /* after a game: offer to post it, and show the board it would go on */
+  let endWeekly = true;
+  function postFinish() {
+    $('postEnd').hidden = true;
+    $('postNote').textContent = '';
+    const g = game;
     boardReady.then(() => {
-      if (!BOARD) {
-        $('nameBox').hidden = true;
-        $('endBoard').hidden = true;
-      } else renderBoard($('endBoard'), game.day);
+      if (game !== g || !BOARD) return;
+      if (!g.postable) {
+        $('postNote').textContent =
+          g.rounds !== LB_ROUNDS
+            ? 'Only 5-round games go on the leaderboard. You can change the number of rounds in Settings.'
+            : "Games played from a game code can't go on the leaderboard.";
+        return;
+      }
+      $('postEnd').hidden = false;
+      $('nameBox').hidden = !!g.posted;
+      $('nameMsg').classList.remove('bad');
+      $('nameMsg').textContent = 'Your best game shows on the weekly and all-time boards.';
+      if (!$('nameIn').value) $('nameIn').value = store.get('lis_name') || '';
+      endWeekly = true;
+      renderEndBoard();
     });
   }
+  function renderEndBoard() {
+    segPick($('endPeriod'), endWeekly ? 'w' : 'a');
+    renderBoard($('endBoard'), { diff: game.pool, rounds: game.rounds, weekly: endWeekly });
+  }
+  segClick('endPeriod', v => {
+    endWeekly = v === 'w';
+    if (game) renderEndBoard();
+  });
   $('nameBtn').onclick = async () => {
     const n = $('nameIn').value.trim().replace(/\s+/g, ' '),
       p = nameProblem(n);
@@ -1021,28 +1094,32 @@
       return;
     }
     await boardReady;
-    const saved = loadRanked();
-    if (!BOARD || !saved || !saved.done) return;
+    const g = game;
+    if (!BOARD || !g || !g.over || !g.postable || g.posted) return;
     $('nameBtn').disabled = true;
     $('nameMsg').classList.remove('bad');
     $('nameMsg').textContent = 'Posting…';
     try {
       await BOARD.submit({
         name: n,
-        score: saved.score,
-        day: saved.day,
-        rounds: (saved.res || []).map(r => ({ id: r.id, pts: r.pts })),
+        diff: g.pool,
+        rounds: g.rounds,
+        score: g.score,
+        time: Math.min(Math.round(usedMs()), 86400000),
+        seed: g.seed,
       });
+      g.posted = true;
       store.set('lis_name', n);
-      store.set('lis_ranked3', JSON.stringify({ ...saved, sent: true }));
-      $('nameBox').hidden = true;
+      if (game === g) {
+        $('nameBox').hidden = true;
+        renderEndBoard();
+      }
       toast('Your score is on the leaderboard!');
-      renderBoard($('endBoard'), saved.day);
     } catch (e) {
       $('nameMsg').classList.add('bad');
       $('nameMsg').textContent =
         e && e.code === 'duplicate'
-          ? "You've already posted a score today. Only the first one counts."
+          ? "You've already posted this game."
           : e && e.code === 'invalid_argument'
             ? "You don't have permission to post scores on this copy of the game."
             : "Couldn't post your score. Please try again.";
@@ -1050,15 +1127,443 @@
       $('nameBtn').disabled = false;
     }
   };
-  $('rankedBtn').onclick = startRanked;
-  // without a leaderboard backend (e.g. a static GitHub Pages copy) ranked still works, just without the global board
+  $('nameIn').addEventListener('keydown', e => {
+    if (e.key === 'Enter') $('nameBtn').click();
+  });
+  // without a leaderboard backend (e.g. a plain static copy) the game still works, just without the boards
   boardReady.then(() => {
     if (!BOARD) {
-      $('boardBtn').hidden = true;
-      document.querySelector('#rankedCard .tag').hidden = true;
+      $('boardCard').hidden = true;
+      $('boardNav').hidden = true;
     }
   });
-  $('boardBtn').onclick = () => showStartBoard();
+
+  /* ---------- lobbies: play the same spots with friends, round by round (Supabase only) ----------
+     The host's settings pick the maps; everyone gets the same seed. After each round you see who has
+     guessed and where; the host moves everyone on. Talks to the lobby_* functions in tools/leaderboard.sql. */
+  let lob = null; // { code, d: last state from the server, ... }
+  const PCOLS = ['#6fb6ff', '#ff7ab8', '#9be15d', '#c49bff', '#ff9f43', '#4ee0c9', '#ff6b6b', '#e8e36a'];
+  function secretToken() {
+    let t = store.get('lis_secret');
+    if (!/^[0-9a-f-]{36}$/.test(t || '')) {
+      t = newUuid();
+      store.set('lis_secret', t);
+    }
+    return t;
+  }
+  const safeName = n => (typeof n === 'string' && !nameProblem(n) ? n : 'Player');
+  const inviteUrl = code => location.origin + location.pathname + '?lobby=' + code;
+  const standings = players => [...players].sort(byScoreTime);
+  async function rpc(fn, args) {
+    const r = await withTimeout(
+      fetch(`${SB.url}/rest/v1/rpc/${fn}`, {
+        method: 'POST',
+        headers: sbHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify(args),
+      })
+    );
+    const txt = await r.text();
+    let j = null;
+    try {
+      j = txt ? JSON.parse(txt) : null;
+    } catch (e) {}
+    if (!r.ok) {
+      // messages raised by the lobby functions are written for players; anything else gets a generic message
+      const friendly = j && j.code === 'P0001' && j.message;
+      throw Object.assign(new Error(friendly || 'http ' + r.status), { friendly: !!friendly, status: r.status });
+    }
+    return j;
+  }
+  const errText = e =>
+    e && e.friendly
+      ? e.message
+      : e && e.status === 404
+        ? "Lobbies aren't set up on this copy of the game yet."
+        : "Couldn't reach the lobby. Check your connection and try again.";
+  // every request is numbered so a slow, older reply can't undo a newer one
+  async function lobCall(fn, args) {
+    const my = ++lob.sent,
+      L = lob;
+    const d = await rpc(fn, { p_code: L.code, p_token: secretToken(), ...args });
+    if (lob === L && my > L.applied) {
+      L.applied = my;
+      onLobby(d);
+    }
+    return d;
+  }
+  function setUrl(code) {
+    try {
+      const u = new URL(location.href);
+      if (code) u.searchParams.set('lobby', code);
+      else u.searchParams.delete('lobby');
+      history.replaceState(null, '', u);
+    } catch (e) {}
+  }
+  function openLobby(code) {
+    if (lob) leaveLobby();
+    game = null;
+    showSeq++;
+    setLoading(false);
+    lob = { code: code || null, d: null, sent: 0, applied: 0, fails: 0, busy: false, timer: 0 };
+    $('intro').hidden = true;
+    $('menuBtn').hidden = false;
+    $('lobName').value = store.get('lis_name') || '';
+    $('lobMsg2').textContent = '';
+    $('lobMsg2').classList.remove('bad');
+    chips();
+    if (code) {
+      setUrl(code);
+      startPolling();
+    }
+    renderLobby();
+  }
+  function startPolling() {
+    clearInterval(lob.timer);
+    const L = lob;
+    const poll = async () => {
+      if (lob !== L || L.busy) return;
+      L.busy = true;
+      try {
+        await lobCall('lobby_state', {});
+        L.fails = 0;
+      } catch (e) {
+        if (++L.fails === 3) toast('Lost connection to the lobby. Retrying…');
+      } finally {
+        L.busy = false;
+      }
+    };
+    L.timer = setInterval(poll, 1500);
+    poll();
+  }
+  function leaveLobby() {
+    if (!lob) return;
+    const L = lob;
+    lob = null;
+    clearInterval(L.timer);
+    if (L.code && L.d && L.d.me) rpc('lobby_leave', { p_code: L.code, p_token: secretToken() }).catch(() => {});
+    setUrl(null);
+    if (game && game.lobby) game.lobby = false;
+  }
+  function onLobby(d) {
+    if (!lob) return;
+    if (!d) {
+      toast("That lobby doesn't exist any more.");
+      mainMenu();
+      return;
+    }
+    lob.d = d;
+    const me = d.me ? d.players.find(p => p.id === d.me) : null;
+    if (game && game.lobby) {
+      if (d.state === 'wait') {
+        // the host has set up a new game: back to the lobby
+        game = null;
+        showSeq++;
+        setLoading(false);
+        chips();
+        renderLobby();
+        return;
+      }
+      lobbySync(d);
+    } else if (me && d.state !== 'wait' && d.seed) startLobbyGame(d, me);
+    else renderLobby();
+  }
+  function renderLobby() {
+    if (game) return;
+    panel('pLobby');
+    const d = lob.d,
+      creating = !lob.code;
+    const diff = d ? d.diff : opts.pool,
+      rounds = d ? d.rounds : opts.rounds;
+    $('lobCode').textContent = creating ? '' : lob.code;
+    $('lobSub').textContent = `${POOLS[diff].label} · ${rounds} rounds`;
+    $('lobInvite').hidden = creating;
+    $('lobLink').value = creating ? '' : inviteUrl(lob.code);
+    const isMember = !!(d && d.me),
+      isHost = isMember && d.host === d.me;
+    $('lobJoin').hidden = isMember || (!!d && d.state !== 'wait');
+    $('lobJoinBtn').textContent = creating ? 'Create lobby' : 'Join lobby';
+    $('lobPlayersBox').hidden = creating;
+    if (d) {
+      $('lobCount').textContent = `${d.players.length} / 12`;
+      $('lobPlayers').innerHTML = d.players
+        .map(
+          (p, i) =>
+            `<li class="${p.id === d.me ? 'me' : ''}${p.idle > 20 ? ' away' : ''}"><i class="dot" style="background:${PCOLS[i % PCOLS.length]}"></i><span class="nm">${esc(safeName(p.name))}</span>${p.id === d.host ? '<span class="badge">Host</span>' : ''}${p.id === d.me ? '<span class="badge you">You</span>' : ''}${p.idle > 20 ? '<span class="badge off">away</span>' : ''}</li>`
+        )
+        .join('');
+    } else $('lobPlayers').innerHTML = creating ? '' : '<li class="empty">Connecting…</li>';
+    $('lobOpts').hidden = !(isHost && d.state === 'wait');
+    if (isHost) {
+      for (const b of $('lobPool').children) b.classList.toggle('on', b.dataset.v === d.diff);
+      for (const b of $('lobRounds').children) b.classList.toggle('on', +b.dataset.v === d.rounds);
+    }
+    $('lobStart').hidden = !(isHost && d.state === 'wait');
+    $('lobMsg').textContent = creating
+      ? 'Pick a name, create the lobby, then send your friends the invite link.'
+      : !d
+        ? ''
+        : !isMember
+          ? d.state === 'wait'
+            ? 'Type a name and join to play.'
+            : "A game is in progress. You'll be able to join when it finishes."
+          : d.state === 'wait'
+            ? isHost
+              ? 'Send your friends the invite link, then start when everyone is here.'
+              : 'Waiting for the host to start the game…'
+            : '';
+    $('statusL').textContent = creating ? 'Setting up a lobby.' : `Lobby ${lob.code}`;
+    $('statusR').textContent = '';
+  }
+  $('lobJoinBtn').onclick = async () => {
+    const n = $('lobName').value.trim().replace(/\s+/g, ' '),
+      p = nameProblem(n);
+    const msg = $('lobMsg2');
+    if (p) {
+      msg.textContent = p;
+      msg.classList.add('bad');
+      return;
+    }
+    msg.classList.remove('bad');
+    msg.textContent = lob.code ? 'Joining…' : 'Creating…';
+    $('lobJoinBtn').disabled = true;
+    try {
+      if (!lob.code) {
+        const L = lob;
+        const d = await rpc('lobby_create', {
+          p_token: secretToken(),
+          p_name: n,
+          p_diff: opts.pool,
+          p_rounds: opts.rounds,
+        });
+        if (lob !== L) return;
+        lob.code = d.code;
+        setUrl(d.code);
+        lob.applied = ++lob.sent;
+        onLobby(d);
+        startPolling();
+      } else await lobCall('lobby_join', { p_name: n });
+      store.set('lis_name', n);
+      msg.textContent = '';
+    } catch (e) {
+      msg.textContent = errText(e);
+      msg.classList.add('bad');
+    } finally {
+      $('lobJoinBtn').disabled = false;
+    }
+  };
+  $('lobName').addEventListener('keydown', e => {
+    if (e.key === 'Enter') $('lobJoinBtn').click();
+  });
+  const lobAct = async (fn, args) => {
+    try {
+      await lobCall(fn, args);
+    } catch (e) {
+      toast(errText(e));
+    }
+  };
+  $('lobPool').onclick = e => {
+    const b = e.target.closest('button');
+    if (b && lob && lob.d) lobAct('lobby_reset', { p_diff: b.dataset.v, p_rounds: lob.d.rounds });
+  };
+  $('lobRounds').onclick = e => {
+    const b = e.target.closest('button');
+    if (b && lob && lob.d) lobAct('lobby_reset', { p_diff: lob.d.diff, p_rounds: +b.dataset.v });
+  };
+  $('lobStart').onclick = () => lobAct('lobby_start', {});
+  $('lobLeave').onclick = mainMenu;
+  $('lobCopy').onclick = async () => {
+    try {
+      await navigator.clipboard.writeText($('lobLink').value);
+      toast('Invite link copied. Send it to your friends!');
+    } catch (e) {
+      $('lobLink').select();
+      toast('Copy the link from the box.');
+    }
+  };
+  $('hostBtn').onclick = () => openLobby(null);
+  // dist from points (the server keeps points, not distance)
+  const distFor = (pts, m) => (pts >= 5000 ? null : 3.2 - m.W * 0.4 * Math.log(Math.max(pts, 1) / 5000));
+  // other players' pins: smaller, with the name to the side so it doesn't cover the "Here" label
+  const PIN2 = (x, y, col, label) =>
+    `<g transform="translate(${x} ${y}) scale(.72)"><path d="M0 0 C-14 -22 -22 -32 -22 -44 A22 22 0 1 1 22 -44 C22 -32 14 -22 0 0Z" fill="${col}" stroke="#0d0a07" stroke-width="5"/><circle cy="-44" r="8" fill="#0d0a07"/><text x="30" y="-36" font-family="Inter,sans-serif" font-weight="700" font-size="34" fill="#fff" stroke="#0d0a07" stroke-width="7" paint-order="stroke">${label}</text></g>`;
+  const missedRound = m => ({ m, pick: null, pts: 0, dist: null, ok: false, ms: 0, missed: true });
+  function startLobbyGame(d, me) {
+    game = makeGame(d.diff, d.rounds, d.seed);
+    game.lobby = true;
+    game.fresh = true;
+    game.postable = d.rounds === LB_ROUNDS;
+    const byId = id => INDEX.find(m => m.id === id);
+    // rebuild the rounds you've already played from the server (after a refresh)
+    const upto = d.state === 'done' ? d.rounds : Math.min(d.round, d.rounds);
+    for (let r = 1; r <= upto; r++) {
+      const x = me.results.find(q => q.r === r),
+        m = game.maps[r - 1];
+      if (x)
+        game.res.push({
+          m,
+          pick: byId(x.pick) || null,
+          pts: x.pts,
+          ok: !!x.ok,
+          ms: x.ms,
+          dist: x.ok ? distFor(x.pts, m) : null,
+          pin: x.u == null ? null : { u: x.u, v: x.v },
+        });
+      else if (r < upto || d.state === 'done') game.res.push(missedRound(m));
+    }
+    game.score = game.res.reduce((a, r) => a + r.pts, 0);
+    $('search').value = '';
+    $('intro').hidden = true;
+    $('menuBtn').hidden = false;
+    if (d.state === 'done') {
+      game.i = d.rounds;
+      return finish();
+    }
+    if (game.res.length >= d.round) {
+      // you'd already guessed this round: show its result again
+      game.i = d.round - 1;
+      resumeResult(game.res[game.i], game.spots[game.i]);
+    } else {
+      game.i = d.round - 2;
+      nextRound();
+    }
+  }
+  async function resumeResult(r, seed) {
+    chips();
+    const g = game;
+    try {
+      const spot = await show(r.m.id, seed);
+      if (!spot || g !== game) return;
+      r.spot = spot;
+      if (r.ok && r.pin) {
+        const tu = spot.x / (r.m.W * 100),
+          tv = 1 - spot.y / (r.m.H * 100);
+        r.dist = Math.hypot((r.pin.u - tu) * r.m.W, (r.pin.v - tv) * r.m.H);
+      }
+      if (!r.pick) r.pick = r.m;
+      renderResult(r);
+    } catch (e) {
+      setLoading(true, 'Could not load this map. Check your connection and try again.');
+    }
+  }
+  function lobbySubmit(r, round) {
+    const L = lob;
+    if (!L) return;
+    L.submitting = true;
+    const args = {
+      p_round: round,
+      p_pts: r.pts,
+      p_ms: Math.min(Math.round(r.ms), 3600000),
+      p_ok: r.ok,
+      p_pick: r.pick.id,
+      p_u: r.ok ? r.pin.u : null,
+      p_v: r.ok ? r.pin.v : null,
+    };
+    const go = async tries => {
+      try {
+        await lobCall('lobby_submit', args);
+      } catch (e) {
+        if (!e.friendly && tries < 3 && lob === L) return go(tries + 1);
+        toast(e.friendly ? e.message : "Couldn't send your guess to the lobby.");
+      }
+    };
+    go(0).finally(() => {
+      L.submitting = false;
+    });
+  }
+  // keep up with the host: move on when they do, finish when the game ends
+  function lobbySync(d) {
+    if (lob.submitting) return lobbyUI();
+    const cur = game.i + 1;
+    if (game.over) return lobbyUI();
+    const target = d.state === 'done' ? d.rounds + 1 : d.round;
+    if (target > cur) {
+      const missed = game.res.length < cur;
+      while (game.res.length < Math.min(target - 1, d.rounds)) game.res.push(missedRound(game.maps[game.res.length]));
+      if (missed) toast('The host moved on before you guessed. That round scores 0.');
+      if (d.state === 'done') {
+        game.i = d.rounds;
+        finish();
+      } else {
+        game.i = target - 2;
+        nextRound();
+      }
+      return;
+    }
+    lobbyUI();
+  }
+  function lobbyNext() {
+    if (!lob || !lob.d) return;
+    if (lob.d.host !== lob.d.me) return;
+    lobAct('lobby_next', { p_from: lob.d.round });
+  }
+  function lobbyAgain() {
+    const d = lob.d;
+    if (d && d.host === d.me) lobAct('lobby_reset', { p_diff: d.diff, p_rounds: d.rounds });
+    else mainMenu();
+  }
+  // standings, who has guessed, other players' pins, and the host's buttons
+  function lobbyUI() {
+    if (!lob || !lob.d || !game || !game.lobby) return;
+    const d = lob.d,
+      isHost = d.host === d.me,
+      round = d.state === 'done' ? d.rounds : d.round;
+    const colour = id =>
+      PCOLS[
+        Math.max(
+          0,
+          d.players.findIndex(p => p.id === id)
+        ) % PCOLS.length
+      ];
+    const here = d.players.filter(p => p.idle <= 30 || p.round >= round);
+    const guessed = here.filter(p => p.round >= round).length;
+    $('chipLob').innerHTML = `Guessed <b>${guessed}</b> / ${here.length}`;
+    const rows = (withRound, final) =>
+      '<ol>' +
+      standings(d.players)
+        .map((p, i) => {
+          const x = p.results.find(q => q.r === round);
+          const now = final ? fmtTime(p.time) : x ? `+${fmt(x.pts)}` : p.idle > 30 ? 'away' : 'guessing…';
+          return `<li class="${p.id === d.me ? 'me' : ''}"><span class="pos">${i + 1}</span><i class="dot" style="background:${colour(p.id)}"></i><span class="nm">${esc(safeName(p.name))}${p.id === d.host ? ' <small>host</small>' : ''}</span><span class="tm">${withRound ? now : ''}</span><span class="sc">${fmt(p.score)}</span></li>`;
+        })
+        .join('') +
+      '</ol>';
+    if (!$('pResult').hidden) {
+      const last = round >= d.rounds;
+      $('lobRound').innerHTML = `<h4>Lobby · round ${round} of ${d.rounds}</h4>` + rows(true, false);
+      const waiting = here.length - guessed;
+      const btn = $('nextBtn');
+      if (isHost) {
+        btn.disabled = false;
+        btn.textContent =
+          (last ? 'See final standings' : 'Next round') + (waiting > 0 ? ` (${waiting} still guessing)` : '');
+      } else {
+        btn.disabled = true;
+        btn.textContent = waiting > 0 ? `Waiting for ${waiting} more…` : 'Everyone has guessed · waiting for the host';
+      }
+      // everyone's pins who picked the right map
+      const r = game.res[round - 1];
+      if (r && r.spot) {
+        let extra = '';
+        for (const p of d.players) {
+          if (p.id === d.me) continue;
+          const x = p.results.find(q => q.r === round);
+          if (x && x.ok && x.u != null)
+            extra += PIN2(x.u * 1000, x.v * 1000, colour(p.id), esc(safeName(p.name).slice(0, 12)));
+        }
+        $('resSvg').innerHTML = extra + (game.resSvg || '');
+      }
+    }
+    if (!$('pEnd').hidden) {
+      $('lobEnd').innerHTML = `<h4>Final standings</h4>` + rows(true, true);
+      $('againBtn').textContent = isHost ? 'New game' : 'Leave lobby';
+      $('lobEndMsg').textContent =
+        d.state !== 'done'
+          ? 'Waiting for everyone to finish…'
+          : isHost
+            ? 'Start a new game with the same players, or change the maps first.'
+            : 'Waiting for the host to start another game…';
+    }
+  }
 
   /* ---------- settings (top right): same app themes as the Minimap Maker ---------- */
   const PREFS = (() => {
@@ -1415,19 +1920,17 @@
       v: "Savage's original S2 Games maps, plus every map played more than 500 times.",
       e: 'The most played maps on the Savage DRX servers, played more than 200 times. The ones most players will know.',
       m: 'Well known maps, played 110 to 199 times.',
-      h: 'Rarer maps, played 50 to 109 times.',
+      h: 'Rarer maps, played 70 to 109 times.',
       a: 'Every map in the game, from the classics to the rarest.',
     };
     for (const b of $('segPool').children) {
       const n = INDEX.filter(POOLS[b.dataset.v].f).length;
       b.dataset.tip = `${POOLS[b.dataset.v].label} · ${n} maps\n${TIPS[b.dataset.v]}`;
     }
-    updateRankedCard();
-    setInterval(updateRankedCard, 60000);
-    {
-      const sv = loadRanked();
-      if (sv && !sv.done && store.get('lis_inranked') === '1') startRanked();
-    } // refreshing mid-ranked puts you back where you were
+    $('lobbyCard').hidden = !SB;
+    const lobParam = (new URLSearchParams(location.search).get('lobby') || '').toUpperCase();
+    if (SB && /^[A-Z2-9]{6}$/.test(lobParam)) openLobby(lobParam);
+
     const spinView = () => {
       if (!game && !drag && R.map && $('intro').hidden) {
         R.yaw += 0.0016;
@@ -1437,5 +1940,8 @@
     };
     spinView();
   })();
-  if (DEBUG) window.__game = () => game;
+  if (DEBUG) {
+    window.__game = () => game;
+    window.__lob = () => lob;
+  }
 })();

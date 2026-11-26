@@ -2,15 +2,17 @@
 
 A location-guessing game for the maps of **Savage: The Battle for Newerth**. You're dropped somewhere on a real Savage map, rebuilt in your browser from the map's own files. Look around, work out which map you're on, then pin the spot where you're standing on its minimap.
 
-By **Necro**. Version 1.3. Map list and play counts come from [savagedrx.com](https://savagedrx.com/maps).
+By **Necro**. Version 1.4. Map list and play counts come from [savagedrx.com](https://savagedrx.com/maps).
 
 ## Features
 
-- 458 maps, each rebuilt from its heightmap, its three terrain texture layers, its real props, NPCs and grass
+- 446 maps, each rebuilt from its heightmap, its three terrain texture layers, its real props, NPCs and grass
 - **Very easy** (the original S2 Games maps plus the best-known maps), **Easy**, **Medium**, **Hard** and **Every map**, based on how often each map is played on the Savage DRX servers
 - Full marks for a pin within 3.2 tiles of the real spot, with points tapering off gently beyond that
-- 3, 5 or 10 rounds, with a game code you can share so friends get the same maps and spots
-- **Daily ranked**: 3 Easy + 2 Medium maps, the same for everyone, new each day at 04:00 GMT; progress survives a refresh
+- 5 rounds by default (3, 10, 15 or 20 in Settings, for fun: only 5-round games count for the leaderboard). Every game from Play is new and its seed is never shown; to play the same maps and spots as friends, make a code under **Play a friend's game** (code games don't go on the leaderboard)
+- A clock that runs while you look around and stops when you guess
+- **Leaderboards**: when you finish a 5-round game you can post your score. Every difficulty has a weekly board (new each Monday at 00:00 GMT) and an all-time board, showing each player's best game; equal scores go to the quicker time. Open them from **Leaderboards** at the top of the page
+- **Lobbies**: host a game, send the invite link, and play the same spots with up to 12 friends, round by round, with live standings and everyone's pins on the result map
 - Wordle-style shareable results: one coloured square per round, ready to paste into Discord
 - Eight app themes, an optional Savage cursor, and toggles for the compass and grass
 
@@ -28,18 +30,22 @@ To publish with **GitHub Pages**, push the repository and enable Pages on the de
 
 You need a browser with WebGL 2 (any current Chrome, Edge, Firefox or Safari).
 
-## Daily ranked and the leaderboard
+## Leaderboards and lobbies
 
-Ranked works anywhere. The **global leaderboard** needs somewhere to store scores. It's built to use a free [Supabase](https://supabase.com) project:
+The **leaderboards** and **lobbies** need a server. They're built to use a free [Supabase](https://supabase.com) project:
 
 1. Create a Supabase account and a new project (the free plan is plenty).
 2. In the project, open **SQL Editor**, paste in the contents of `tools/leaderboard.sql` and click **Run**.
 3. Open **Project Settings → API** and copy the **Project URL** and the **publishable** key (an older **anon public** key also works).
 4. Paste them into `js/config.js`, then commit and push.
 
-The anon key is designed to be public. The rules in `leaderboard.sql` only let visitors read scores and add one score per player for the current day. Nobody can edit or delete scores through the site, but you can remove bad entries yourself in Supabase's table editor.
+If you set it up before version 1.4, run the updated `tools/leaderboard.sql` again. It's safe to re-run and keeps existing scores.
 
-Without a config the leaderboard button and name entry hide themselves and ranked is played without it. (When the game runs as a Claude artifact it uses the artifact's own shared database instead.)
+The key is designed to be public. The rules in `leaderboard.sql` only let visitors add scores (each game once, with sensible limits on score and time) and read the boards through a `leaderboard` function that returns each player's best game. Nobody can edit or delete scores through the site, but you can remove bad entries yourself in Supabase's table editor (table `scores`). Games played from a game code can't be posted, since anyone could replay a code they've already seen.
+
+Lobbies are stored in two tables (`lobbies`, `lobby_players`) that the site can't read or write directly; everything goes through `lobby_*` database functions that check who is asking (only the host can change settings, start or move on) and what's allowed. Each browser keeps a random secret and only a hash of it is stored. Lobbies untouched for a day are deleted automatically. If the host leaves or goes quiet, the lobby passes to the next player.
+
+Without a config the leaderboard buttons, name entry and lobby card hide themselves and the game is played without them. (When the game runs as a Claude artifact it uses the artifact's own shared database for the leaderboards; lobbies need Supabase.)
 
 Scores are worked out in the player's browser, so treat the leaderboard as friendly rather than cheat-proof. Names are filtered for slurs and abuse before they're posted and again before they're shown, and the database only accepts 2–16 letters, numbers, spaces, `_`, `-` and `.`.
 
@@ -48,8 +54,8 @@ Scores are worked out in the player's browser, so treat the leaderboard as frien
 ```
 index.html        page markup
 css/style.css     styles and themes
-js/config.js      settings for a public copy (leaderboard keys)
-js/app.js         game logic, menus, settings, ranked mode, leaderboard
+js/config.js      settings for a public copy (Supabase keys)
+js/app.js         game logic, menus, settings, leaderboards, lobbies
 js/renderer.js    WebGL renderer: terrain, props, grass, sky, spawn-point picking
 assets/           icons, start-screen image, minimap thumbnail sheet
 data/             one JSON file per map (Hard maps are bundled ten to a file in data/h/), plus index.json
@@ -78,8 +84,8 @@ python3 tools/mkpack.py         # pack models and textures into mpack/
 
 ## Security notes
 
-- No server code, no cookies, no tracking. Settings, best scores and ranked progress live in the browser's `localStorage`.
-- A Content Security Policy in `index.html` only allows the site's own scripts and data, Google Fonts, and Supabase for the leaderboard.
+- No server code, no cookies, no tracking. Settings and best scores live in the browser's `localStorage`.
+- A Content Security Policy in `index.html` only allows the site's own scripts and data, Google Fonts, and Supabase for the leaderboards and lobbies.
 - Anything taken from data or player input is escaped before it reaches the page.
 - Test hooks (`?debug`) only switch on when the site is served from `localhost`.
 

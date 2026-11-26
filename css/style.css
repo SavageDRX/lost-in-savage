@@ -1195,9 +1195,234 @@ header .logo:focus-visible {
   margin-top: 8px;
   line-height: 1;
 }
-#chipDiff {
+.hud2 {
   position: absolute;
-  top: 12px;
-  right: 12px;
+  top: 10px;
+  right: 10px;
   z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  pointer-events: none;
+}
+
+/* ---------- v1.4: clock, leaderboards, lobbies ---------- */
+.board li .tm {
+  color: var(--mute);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  min-width: 44px;
+  text-align: right;
+}
+.board li .sc {
+  min-width: 52px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.board li .nm small {
+  color: var(--mute);
+  font-size: 11px;
+}
+.board .dot,
+.plist .dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex: none;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5);
+}
+.seg.rseg {
+  flex-wrap: nowrap;
+  gap: 4px;
+  margin: 8px 0 8px;
+}
+.seg.rseg button,
+.seg.small button {
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 6px 2px;
+  font-size: 11.5px;
+  line-height: 1.2;
+}
+.seg.rseg button.done::after {
+  content: ' ✓';
+  color: var(--good);
+}
+.lobbycard {
+  border-color: var(--line);
+  background: linear-gradient(180deg, var(--panel2), transparent);
+}
+.lobbycard h3 .tag {
+  background: var(--good);
+}
+.lcode {
+  font:
+    700 18px Inter,
+    sans-serif;
+  letter-spacing: 0.12em;
+  color: var(--accent2);
+  margin-left: 6px;
+}
+.invite {
+  display: flex;
+  gap: 8px;
+  margin: 10px 0 4px;
+}
+.invite input {
+  flex: 1;
+  min-width: 0;
+  font-size: 12.5px;
+}
+#lobOpts {
+  margin-top: 12px;
+}
+.plist li .badge {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  border-radius: 999px;
+  padding: 1px 7px;
+  background: var(--accent);
+  color: var(--onacc);
+}
+.plist li .badge.you {
+  background: var(--panel2);
+  color: var(--accent2);
+  border: 1px solid var(--accent);
+}
+.plist li .badge.off {
+  background: transparent;
+  color: var(--mute);
+  border: 1px solid var(--line);
+}
+.plist li.away .nm {
+  opacity: 0.55;
+}
+.plist li.empty {
+  color: var(--mute);
+  justify-content: center;
+}
+.lobmsg {
+  color: var(--mute);
+  font-size: 12.5px;
+  margin: 10px 0 0;
+  text-align: center;
+}
+.lobmsg:empty {
+  display: none;
+}
+#lobRound {
+  margin-top: 12px;
+}
+#lobRound ol,
+#lobEnd ol {
+  max-height: 220px;
+}
+.ttime {
+  color: var(--mute);
+  font-size: 13px;
+  margin-top: 2px;
+}
+.ttime b {
+  color: var(--accent2);
+}
+#nextBtn:disabled {
+  opacity: 0.75;
+  cursor: default;
+}
+/* phones: the chips fill the top of the view, so the compass sits above the hint at the bottom */
+@media (max-width: 640px) {
+  .compass {
+    top: auto;
+    bottom: 50px;
+  }
+}
+/* ---------- leaderboards (weekly / all time) ---------- */
+.board .bfoot {
+  color: var(--mute);
+  font-size: 11.5px;
+  margin-top: 6px;
+  text-align: center;
+}
+.board li.gap {
+  justify-content: center;
+  color: var(--mute);
+  padding: 2px;
+}
+.seg.bperiod {
+  margin: 12px 0 0;
+}
+.seg.bperiod + .board {
+  margin-top: 8px;
+}
+.postT {
+  font:
+    700 14px Cinzel,
+    serif;
+  color: var(--accent2);
+  margin-top: 14px;
+}
+.postT + .nameRow {
+  margin-top: 8px;
+}
+.boardcard {
+  width: min(520px, 94vw);
+  max-height: 92vh;
+  overflow: auto;
+}
+.boardcard .bmhead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.boardcard .bmhead h2 {
+  margin: 0;
+}
+.boardcard .row {
+  margin: 10px 0 0;
+}
+.boardcard .board ol {
+  max-height: 46vh;
+}
+/* the title block gives way (its subtitle wraps) before the header buttons drop to a second row */
+header > div:not(.hright) {
+  flex: 1 1 280px;
+  min-width: 0;
+}
+.hright {
+  flex: none;
+}
+@media (max-width: 1100px) {
+  .hright {
+    flex: 1 1 auto;
+    flex-wrap: wrap;
+  }
+}
+.link.newcode {
+  display: block;
+  margin-top: 8px;
+  font-size: 12.5px;
+}
+#codeBtn {
+  white-space: nowrap;
+}
+.roundsnote {
+  margin-top: 8px;
+  font-size: 12.5px;
+  color: var(--mute);
+  text-align: center;
+}
+.roundsnote b {
+  color: var(--accent2);
+}
+.setnote {
+  margin: 6px 0 0;
+  font-size: 11.5px;
+  color: var(--mute);
+}
+#setPop .seg.small button {
+  padding: 5px 2px;
 }

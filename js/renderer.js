@@ -576,6 +576,8 @@ void main(){ vec4 a=uInvVP*vec4(vP,1.,1.); vec3 dir=normalize(a.xyz/a.w-uEye);
       // Savage's own prop models, instanced per map
       this.real3d = [];
       this.boxes = [];
+      this.wsurf = [];
+      this.seaLevel = d.seaLevel;
       if (!d.rn || !d.rn.length) return;
       const gl = this.gl;
       if (!this.mIndex) {
@@ -643,6 +645,21 @@ void main(){ vec4 a=uInvVP*vec4(vP,1.,1.); vec3 dir=normalize(a.xyz/a.w-uEye);
             b[4] * s,
             b[5] * s,
             fol ? 1 : 0,
+          ]);
+        }
+        // flat river/sea/rapids planes are water surfaces: remember them so no spawn lands in the water
+        if (/river|rapids|lake|pond|ocean|sea/.test(nm) && !fol && b[5] - b[2] < 8) {
+          const w = ((ro[i + 4] + 180) * Math.PI) / 180;
+          this.wsurf.push([
+            ro[i + 1],
+            ro[i + 2],
+            Math.cos(w),
+            Math.sin(w),
+            b[0] * s,
+            b[1] * s,
+            b[3] * s,
+            b[4] * s,
+            ro[i + 3] + b[5] * s,
           ]);
         }
       }
@@ -800,6 +817,20 @@ void main(){ vec4 a=uInvVP*vec4(vP,1.,1.); vec3 dir=normalize(a.xyz/a.w-uEye);
       return best;
     }
     /* is a world point inside any prop's (rotated) bounding box, grown by m? */
+    /* is (x,y) in water? A map can declare a sea level in its data (an island in a sea of water planes);
+       otherwise check the flat water planes, with a margin m around their edges */
+    inWater(x, y, m = 60) {
+      const h = this.hAt(x, y);
+      if (this.seaLevel != null && h < this.seaLevel + 15) return true;
+      for (const o of this.wsurf || []) {
+        const dx = x - o[0],
+          dy = y - o[1];
+        const lx = o[2] * dx + o[3] * dy,
+          ly = -o[3] * dx + o[2] * dy;
+        if (lx > o[4] - m && lx < o[6] + m && ly > o[5] - m && ly < o[7] + m && h < o[8] + 25) return true;
+      }
+      return false;
+    }
     inBox(px, py, pz, list, m = 0) {
       for (const o of list) {
         const dx = px - o[0],
@@ -837,7 +868,11 @@ void main(){ vec4 a=uInvVP*vec4(vP,1.,1.); vec3 dir=normalize(a.xyz/a.w-uEye);
         W = this.W,
         H = this.H;
       const cells = [];
-      for (let y = 0; y < H - 1; y++) for (let x = 0; x < W - 1; x++) if (this.walk(x, y)) cells.push([x, y]);
+      for (let y = 0; y < H - 1; y++)
+        for (let x = 0; x < W - 1; x++)
+          if (this.walk(x, y) && !this.inWater((x + 0.5) * TILE, (y + 0.5) * TILE, 0)) cells.push([x, y]);
+      if (!cells.length)
+        for (let y = 0; y < H - 1; y++) for (let x = 0; x < W - 1; x++) if (this.walk(x, y)) cells.push([x, y]);
       const C = [];
       for (let tries = 0, cand = 0; tries < 900 && cand < 12; tries++) {
         const c = cells[Math.floor(R() * cells.length)];
@@ -853,8 +888,10 @@ void main(){ vec4 a=uInvVP*vec4(vP,1.,1.); vec3 dir=normalize(a.xyz/a.w-uEye);
           bc = 1;
         const nb = (this.boxes || []).filter(o => Math.hypot(o[0] - x, o[1] - y) < 1300);
         if (this.inBox(x, y, eye, nb, 40) || this.inBox(x, y, eye - 40, nb, 25)) continue;
+        // in a river bed or pond (Savage marks them with waterfall/river props), or in the water itself
         if ((this.waters || []).some(w => Math.hypot(w[0] - x, w[1] - y) < w[3] && this.hAt(x, y) < w[2] + 80))
-          continue; // in a river bed or pond (Savage marks them with waterfall/river props) // standing inside a building, tree canopy or rock
+          continue;
+        if (this.inWater(x, y)) continue;
         const near = this.solid.filter(s => {
           const d = Math.hypot(s[0] - x, s[1] - y);
           return d < 1600;

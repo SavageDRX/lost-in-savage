@@ -20,7 +20,7 @@
       href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;800&family=Inter:wght@400;500;600&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="css/style.css?v=1.3.1" />
+    <link rel="stylesheet" href="css/style.css?v=1.4" />
   </head>
   <body>
     <header>
@@ -38,6 +38,12 @@
             <path d="M5 9v12h14V9" />
             <path d="M10 21v-6h4v6" /></svg
           >Main menu
+        </button>
+        <button class="btn" id="boardNav" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0V4z" />
+            <path d="M17 5h3v2a3 3 0 0 1-3 3M7 5H4v2a3 3 0 0 0 3 3" /></svg
+          >Leaderboards
         </button>
         <button class="btn" id="howBtn">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -103,7 +109,7 @@
               ></span
             >
           </div>
-          <div class="verline" style="margin-top: 8px">Lost in Savage v1.3 · by Necro</div>
+          <div class="verline" style="margin-top: 8px">Lost in Savage v1.4 · by Necro</div>
         </div>
         <button class="btn" id="setBtn" type="button">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -131,9 +137,16 @@
           <h3>View</h3>
           <label><input type="checkbox" id="compassChk" /> Show the compass</label>
           <label style="margin-top: 6px"><input type="checkbox" id="grassChk" /> Show grass</label>
+          <h3>Rounds per game</h3>
+          <div class="seg small" id="segRounds">
+            <button data-v="3" type="button">3</button><button data-v="5" type="button">5</button
+            ><button data-v="10" type="button">10</button><button data-v="15" type="button">15</button
+            ><button data-v="20" type="button">20</button>
+          </div>
+          <p class="setnote">Only 5-round games count for the leaderboard. Back to 5 each time you visit.</p>
           <h3>Your scores</h3>
           <button class="btn" id="resetBest" type="button" style="width: 100%">Reset best scores</button>
-          <div class="verline">Lost in Savage v1.3 · by Necro</div>
+          <div class="verline">Lost in Savage v1.4 · by Necro</div>
         </div>
       </div>
     </header>
@@ -147,7 +160,11 @@
             <span class="chip" id="chipRound">Round <b>–</b></span
             ><span class="chip" id="chipScore">Score <b>0</b></span>
           </div>
-          <span class="chip" id="chipDiff" hidden></span>
+          <div class="hud2">
+            <span class="chip" id="chipDiff" hidden></span
+            ><span class="chip" id="chipTime" hidden>Time <b>0:00</b></span
+            ><span class="chip" id="chipLob" hidden></span>
+          </div>
           <div class="vbtns">
             <button id="zIn" title="Zoom in">+</button>
             <button id="zOut" title="Zoom out">−</button>
@@ -162,7 +179,7 @@
           <div id="intro">
             <img src="assets/icon_192.png" alt="" />
             <h2>Lost in Savage</h2>
-            <p>Choose your maps and rounds, then press Play to begin.</p>
+            <p>Choose your maps, then press Play to begin.</p>
             <button id="introPlay" type="button">Play</button>
           </div>
           <div class="loading" id="loading" hidden>
@@ -194,36 +211,96 @@
               <button data-v="a" data-tip="Every map">Every map<small id="allCount">all</small></button>
             </div>
           </div>
-          <div class="row">
-            <label class="t">Rounds</label>
-            <div class="seg" id="segRounds">
-              <button data-v="3">3</button><button data-v="5">5</button><button data-v="10">10</button>
-            </div>
-          </div>
           <button class="btn primary big" id="playBtn">Play</button>
+          <div class="roundsnote" id="roundsNote" hidden></div>
           <div class="best" id="bestTxt"></div>
           <details>
             <summary>Play a friend's game</summary>
             <p class="sub" style="margin: 4px 0 10px">
-              Everyone who enters the same code gets the same maps and the same spots.
+              Everyone who enters the same code gets the same maps and the same spots. Code games are just for fun, so
+              they can't go on the leaderboard.
             </p>
             <div class="codebox">
-              <input type="text" id="codeIn" placeholder="e.g. P5-483920" maxlength="12" /><button
+              <input type="text" id="codeIn" placeholder="e.g. E5-483920" maxlength="12" /><button
                 class="btn"
                 id="codeBtn"
               >
                 Play code
               </button>
             </div>
+            <button class="link newcode" id="newCodeBtn" type="button">
+              Make a new code to share (uses your maps and rounds)
+            </button>
           </details>
-          <div class="ranked" id="rankedCard">
-            <h3>Daily ranked <span class="tag">Global</span></h3>
-            <p id="rankedInfo">Resets every day at 4:00 GMT.</p>
-            <div class="rrow">
-              <button class="btn primary" id="rankedBtn" type="button">Play today's ranked</button
-              ><button class="btn" id="boardBtn" type="button">Leaderboard</button>
+          <div class="ranked" id="boardCard">
+            <h3>Leaderboards <span class="tag">Global</span></h3>
+            <p>
+              When you finish a 5-round game you can post your score. Every difficulty has a weekly board (new each
+              Monday at 00:00 GMT) and an all-time board. Equal scores go to the quicker time.
+            </p>
+            <div class="rrow"><button class="btn primary" id="boardBtn" type="button">View leaderboards</button></div>
+          </div>
+          <div class="ranked lobbycard" id="lobbyCard" hidden>
+            <h3>Play with friends <span class="tag">Live</span></h3>
+            <p>
+              Host a lobby with the maps chosen above and send your friends the invite link. Everyone gets the same
+              spots and plays each round together.
+            </p>
+            <div class="rrow"><button class="btn primary" id="hostBtn" type="button">Host a lobby</button></div>
+          </div>
+        </section>
+
+        <!-- lobby -->
+        <section class="card" id="pLobby" hidden>
+          <h2>Lobby <span class="lcode" id="lobCode"></span></h2>
+          <p class="sub" id="lobSub"></p>
+          <div class="invite" id="lobInvite">
+            <input type="text" id="lobLink" readonly aria-label="Invite link" /><button
+              class="btn primary"
+              id="lobCopy"
+              type="button"
+            >
+              Copy invite link
+            </button>
+          </div>
+          <div id="lobJoin">
+            <div class="nameRow">
+              <input
+                id="lobName"
+                maxlength="16"
+                placeholder="Your name"
+                autocomplete="nickname"
+                spellcheck="false"
+              /><button class="btn primary" id="lobJoinBtn" type="button">Join lobby</button>
             </div>
-            <div class="board" id="startBoard" hidden></div>
+            <div class="nameMsg" id="lobMsg2"></div>
+          </div>
+          <div id="lobOpts" hidden>
+            <div class="row">
+              <label class="t">Maps</label>
+              <div class="seg small" id="lobPool">
+                <button data-v="v" type="button">Very easy</button><button data-v="e" type="button">Easy</button
+                ><button data-v="m" type="button">Medium</button><button data-v="h" type="button">Hard</button
+                ><button data-v="a" type="button">Every map</button>
+              </div>
+            </div>
+            <div class="row">
+              <label class="t">Rounds</label>
+              <div class="seg small" id="lobRounds">
+                <button data-v="3" type="button">3</button><button data-v="5" type="button">5</button
+                ><button data-v="10" type="button">10</button><button data-v="15" type="button">15</button
+                ><button data-v="20" type="button">20</button>
+              </div>
+            </div>
+          </div>
+          <div class="board" id="lobPlayersBox">
+            <h4>Players <span id="lobCount"></span></h4>
+            <ol class="plist" id="lobPlayers"></ol>
+          </div>
+          <p class="lobmsg" id="lobMsg"></p>
+          <div class="actions">
+            <button class="btn" id="lobLeave" type="button">Leave</button
+            ><button class="btn primary" id="lobStart" type="button" hidden>Start game</button>
           </div>
         </section>
 
@@ -267,6 +344,7 @@
           <div class="canvasbox ovbox" style="cursor: default">
             <img id="resImg" alt="Minimap" /><svg id="resSvg" viewBox="0 0 1000 1000"></svg>
           </div>
+          <div class="board" id="lobRound" hidden></div>
           <div class="actions"><button class="btn primary big" id="nextBtn">Next round</button></div>
         </section>
 
@@ -275,25 +353,39 @@
           <div class="final">
             <div class="rank" id="rank"></div>
             <div class="tot" id="total"></div>
+            <div class="ttime" id="endTime"></div>
             <div class="sub" id="endSub" style="margin-top: 4px"></div>
-            <div id="emojiRow" title="One square per round: green 4,500+, yellow 2,500+, orange under 2,500, red wrong map"></div>
+            <div
+              id="emojiRow"
+              title="One square per round: green 4,500+, yellow 2,500+, orange under 2,500, red wrong map"
+            ></div>
           </div>
           <table id="sumTable"></table>
-          <div id="rankedEnd" hidden>
+          <div id="lobEndBox">
+            <div class="board" id="lobEnd" hidden></div>
+          </div>
+          <p class="lobmsg" id="lobEndMsg"></p>
+          <div id="postEnd" hidden>
             <div id="nameBox">
+              <div class="postT">Put this game on the leaderboard?</div>
               <div class="nameRow">
                 <input
                   id="nameIn"
                   maxlength="16"
-                  placeholder="Your name for the leaderboard"
+                  placeholder="Your name"
                   autocomplete="nickname"
                   spellcheck="false"
-                /><button class="btn primary" id="nameBtn" type="button">Submit</button>
+                /><button class="btn primary" id="nameBtn" type="button">Post score</button>
               </div>
-              <div class="nameMsg" id="nameMsg">2–16 letters, numbers, spaces, _ - or .</div>
+              <div class="nameMsg" id="nameMsg"></div>
+            </div>
+            <div class="seg small bperiod" id="endPeriod">
+              <button data-v="w" type="button">This week</button><button data-v="a" type="button">All time</button>
             </div>
             <div class="board" id="endBoard"></div>
           </div>
+          <p class="lobmsg" id="postNote"></p>
+
           <div class="actions">
             <button class="btn" id="shareBtn">Copy result &amp; code</button
             ><button class="btn primary" id="againBtn">Play again</button>
@@ -334,15 +426,40 @@
             The right map scores up to <b>5,000</b> points; the closer your pin, the more you get. The wrong map scores
             nothing.
           </li>
+          <li>
+            The clock runs while you look around and stops when you guess. When you finish, you can post your score to
+            the weekly and all-time leaderboards. Equal scores go to whoever was quicker.
+          </li>
         </ol>
         <p>Look for mines, the command centres, bridges, cliffs, snow and tree types. They all match the real map.</p>
         <div class="actions"><button class="btn primary" id="howClose">Got it</button></div>
+      </div>
+    </div>
+    <div class="modal" id="boardModal" hidden>
+      <div class="card boardcard">
+        <div class="bmhead">
+          <h2>Leaderboards</h2>
+          <button class="btn" id="boardClose" type="button">Close</button>
+        </div>
+        <div class="seg small bperiod" id="bmPeriod">
+          <button data-v="w" type="button">This week</button><button data-v="a" type="button">All time</button>
+        </div>
+        <div class="row">
+          <label class="t">Maps</label>
+          <div class="seg small" id="bmPool">
+            <button data-v="v" type="button">Very easy</button><button data-v="e" type="button">Easy</button
+            ><button data-v="m" type="button">Medium</button><button data-v="h" type="button">Hard</button
+            ><button data-v="a" type="button">Every map</button>
+          </div>
+        </div>
+        <p class="setnote">5-round games only.</p>
+        <div class="board" id="bmBoard"></div>
       </div>
     </div>
     <div class="toast" id="toast"></div>
 
     <script src="js/config.js?v=1.2.4"></script>
     <script src="js/renderer.js?v=1.2"></script>
-    <script src="js/app.js?v=1.3.1"></script>
+    <script src="js/app.js?v=1.4"></script>
   </body>
 </html>
